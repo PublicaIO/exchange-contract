@@ -22,16 +22,16 @@ contract("Exchange", (accounts) => {
   });
 
   describe('registerToken()', () => {
-    it('registerToken() raises exception on double added token', async () => {
+    it('should raise exception on double added token', async () => {
       await exchange.registerToken(bookToken.address, "Book1");
       await expectThrow(exchange.registerToken(bookToken.address, "Book2"));
     });
 
-    it('registerToken() on success emits TokenAddedToSystem', async () => {
+    it('should emit TokenAddedToSystem on success', async () => {
       truffleAssert.eventEmitted(await exchange.registerToken(bookToken.address, "Book1"), 'TokenAddedToSystem');
     });
 
-    it('registerToken() registers token', async () => {
+    it('should register book token', async () => {
       await exchange.registerToken(bookToken.address, "Book1");
 
       let symbol = await exchange.tokens.call(bookToken.address);
@@ -48,7 +48,7 @@ contract("Exchange", (accounts) => {
       await bookToken.approve(exchange.address, 1, {from: bookHolder});
     });
 
-    it('should raise exception on unknown tokens', async () => {
+    it('should raise exception if unknown book token specified', async () => {
       await expectThrow(exchange.depositToken(0xff, 1, {from: bookHolder}));
     });
 
@@ -78,7 +78,7 @@ contract("Exchange", (accounts) => {
       await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
     });
 
-    it('should raise exception on unknown tokens', async () => {
+    it('should raise exception if unknown book token specified', async () => {
       await expectThrow(exchange.withdrawToken(0xff, 1, {from: bookHolder}));
     });
 
@@ -106,7 +106,7 @@ contract("Exchange", (accounts) => {
       await pblToken.approve(exchange.address, 1, {from: pblHolder});
     });
 
-    it('should raise exception on invalid amount of Pbls', async () => {
+    it('should raise exception on invalid amount of PBL', async () => {
       await expectThrow(exchange.depositPbl(0, {from: pblHolder}));
     });
 
@@ -114,7 +114,7 @@ contract("Exchange", (accounts) => {
       await expectThrow(exchange.depositPbl(2, {from: pblHolder}));
     });
 
-    it('should allow to deposit Pbl', async () => {
+    it('should allow to deposit PBL', async () => {
       await exchange.depositPbl(1, {from: pblHolder});
 
       var transferred = (await pblToken.balanceOf.call(exchange.address)).toNumber();
@@ -131,7 +131,7 @@ contract("Exchange", (accounts) => {
       await exchange.depositPbl(1, {from: pblHolder});
     });
 
-    it('should raise exception on invalid amount of Pbls', async () => {
+    it('should raise exception on invalid amount of PBL', async () => {
       await expectThrow(exchange.withdrawPbl(0, {from: pblHolder}));
     });
 
@@ -139,7 +139,7 @@ contract("Exchange", (accounts) => {
       await expectThrow(exchange.withdrawPbl(2, {from: pblHolder}));
     });
 
-    it('should allow to withdraw Pbl', async () => {
+    it('should allow to withdraw PBL', async () => {
       await exchange.withdrawPbl(1, {from: pblHolder});
 
       var transferred = (await pblToken.balanceOf.call(exchange.address)).toNumber();
@@ -167,192 +167,259 @@ contract("Exchange", (accounts) => {
   //   await expectThrow(exchange.getMarket(0x02));
   // });
 
-  describe('placeBuyOrder() / placeSellOrder()', () => {
+  describe('placeBuyOrder()', () => {
     beforeEach(async () => {
       await exchange.registerToken(bookToken.address, "Book1");
+      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await exchange.depositPbl(1, {from: pblHolder});
     });
 
-    it('placeBuyOrder() on unknown token raises exception', async () => {
-      await expectThrow(exchange.placeBuyOrder(0xff, 1, 1));
+    it('should raise exception if unknown book token specified', async () => {
+      await expectThrow(exchange.placeBuyOrder(0xff, 1, 1, {from: pblHolder}));
     });
 
-    it('placeSellOrder() on unknown token raises exception', async () => {
-      await expectThrow(exchange.placeSellOrder(0xff, 1, 1));
+    it('should raise exception if incorrect number of tokens specified', async () => {
+      await expectThrow(exchange.placeBuyOrder(bookToken.address, 0, 1, {from: pblHolder}));
     });
 
-    it('placeBuyOrder() with incorrect number of tokens raises exception', async () => {
-      await expectThrow(exchange.placeBuyOrder(bookToken.address, 0, 1));
+    it('should raise exception on incorrect price specified', async () => {
+      await expectThrow(exchange.placeBuyOrder(bookToken.address, 1, 0, {from: pblHolder}));
     });
 
-    it('placeSellOrder() with incorrect number of tokens raises exception', async () => {
-      await expectThrow(exchange.placeSellOrder(bookToken.address, 0, 1));
+    it('should raise exception if PBL balance is insufficient', async () => {
+      await expectThrow(exchange.placeBuyOrder(bookToken.address, 1, 2, {from: pblHolder}));
     });
 
-    it('placeBuyOrder() with incorrect price raises exception', async () => {
-      await expectThrow(exchange.placeBuyOrder(bookToken.address, 1, 0));
+    it('should create PBL encumberance', async () => {
+      await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
+      let encumberance = await exchange.pblEncumberanceOf(pblHolder);
+
+      assert.equal(encumberance.toNumber(), 1);
     });
 
-    it('placeSellOrder() with incorrect price raises exception', async () => {
-      await expectThrow(exchange.placeSellOrder(bookToken.address, 1, 0));
+    it('should raise exception on existing PBL encumberance and insufficient PBL balance to create new order', async () => {
+      await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
+
+      await expectThrow(exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder}));
     });
 
-    it('placeBuyOrder() on success emits BuyOrderCreated', async () => {
-      truffleAssert.eventEmitted(await exchange.placeBuyOrder(bookToken.address, 1, 1), 'BuyOrderCreated');
+    it('should emit BuyOrderCreated on success', async () => {
+      truffleAssert.eventEmitted(await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder}), 'BuyOrderCreated');
     });
 
-    it('placeBuyOrder() on success emits SellOrderCreated', async () => {
-      truffleAssert.eventEmitted(await exchange.placeSellOrder(bookToken.address, 1, 1), 'SellOrderCreated');
+    it('should create buy order on success', async () => {
+      await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
+      let orders = await exchange.getBuyOrders(bookToken.address);
+      assert.equal(orders.length, 1);
     });
   });
 
-  describe('getBuyOrder() / getSellOrder()', () => {
+  describe('placeSellOrder()', () => {
     beforeEach(async () => {
       await exchange.registerToken(bookToken.address, "Book1");
+      await bookToken.approve(exchange.address, 1, {from: bookHolder});
+      await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
     });
 
-    it('getBuyOrder() returns correct order', async () => {
-      await exchange.placeBuyOrder(bookToken.address, 5, 5);
+    it('should raise exception if unknown book token specified', async () => {
+      await expectThrow(exchange.placeSellOrder(0xff, 1, 1, {from: bookHolder}));
+    });
+
+    it('should raise exception if incorrect number of tokens specified', async () => {
+      await expectThrow(exchange.placeSellOrder(bookToken.address, 0, 1, {from: bookHolder}));
+    });
+
+    it('should raise exception on incorrect price specified', async () => {
+      await expectThrow(exchange.placeSellOrder(bookToken.address, 1, 0, {from: bookHolder}));
+    });
+
+    it('should raise exception if book token balance is insufficient', async () => {
+      await expectThrow(exchange.placeSellOrder(bookToken.address, 2, 100, {from: bookHolder}));
+    });
+
+    it('should create book token encumberance', async () => {
+      await exchange.placeSellOrder(bookToken.address, 1, 1, {from: bookHolder});
+      let encumberance = await exchange.tokenEncumberanceOf(bookToken.address, bookHolder);
+
+      assert.equal(encumberance.toNumber(), 1);
+    });
+
+    it('should raise exception on existing book token encumberance and insufficient token balance to create new order', async () => {
+      await exchange.placeSellOrder(bookToken.address, 1, 100, {from: bookHolder});
+
+      await expectThrow(exchange.placeSellOrder(bookToken.address, 1, 1000, {from: bookHolder}));
+    });
+
+    it('should emit SellOrderCreated on success', async () => {
+      truffleAssert.eventEmitted(await exchange.placeSellOrder(bookToken.address, 1, 1, {from: bookHolder}), 'SellOrderCreated');
+    });
+
+    it('should create sell order on success', async () => {
+      await exchange.placeSellOrder(bookToken.address, 1, 1, {from: bookHolder});
+      let orders = await exchange.getSellOrders(bookToken.address);
+
+      assert.equal(orders.length, 1);
+    });
+  });
+
+  describe('getBuyOrder()', () => {
+    beforeEach(async () => {
+      await exchange.registerToken(bookToken.address, "Book1");
+      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await exchange.depositPbl(1, {from: pblHolder});
+    });
+
+    it('should return correct order on success', async () => {
+      await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
 
       let orders = await exchange.getBuyOrders(bookToken.address);
       id = orders[0];
 
       order = await exchange.getBuyOrder(bookToken.address, id);
 
-      assert.equal(order[0].toNumber(), 5);
-      assert.equal(order[1].toNumber(), 5);
+      assert.equal(order[0].toNumber(), 1);
+      assert.equal(order[1].toNumber(), 1);
+    });
+  });
+
+  describe('getSellOrder()', () => {
+    beforeEach(async () => {
+      await exchange.registerToken(bookToken.address, "Book1");
+      await bookToken.approve(exchange.address, 1, {from: bookHolder});
+      await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
     });
 
-    it('getSellOrder() returns correct order', async () => {
-      await exchange.placeSellOrder(bookToken.address, 5, 5);
+    it('should return correct order on success', async () => {
+      await exchange.placeSellOrder(bookToken.address, 1, 1, {from: bookHolder});
 
       let orders = await exchange.getSellOrders(bookToken.address);
       id = orders[0];
 
       order = await exchange.getSellOrder(bookToken.address, id);
 
-      assert.equal(order[0].toNumber(), 5);
-      assert.equal(order[1].toNumber(), 5);
+      assert.equal(order[0].toNumber(), 1);
+      assert.equal(order[1].toNumber(), 1);
     });
   });
 
-  describe('getBuyOrders() / getSellOrders()', () => {
+  describe('getBuyOrders()', () => {
     beforeEach(async function() {
       await exchange.registerToken(bookToken.address, "Book1");
+      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await exchange.depositPbl(1, {from: pblHolder});
     });
 
-    it('getBuyOrders() on unknown token raises exception', async () => {
+    it('should raise exception if unknown book token specified', async () => {
       await expectThrow(exchange.getBuyOrders(0xff));
     });
 
-    it('getSellOrders() on unknown token raises exception', async () => {
-      await expectThrow(exchange.getSellOrders(0xff));
-    });
-
-    it('getBuyOrders() on empty orders returns empty list', async () => {
+    it('should return empty list if no orders', async () => {
       let orders = await exchange.getBuyOrders.call(bookToken.address);
 
       assert.equal(orders.length, 0);
     });
 
-    it('getSellOrders() on empty orders returns empty list', async () => {
+    it('should return orders on success', async () => {
+      await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
+
+      let orders = await exchange.getBuyOrders(bookToken.address);
+
+      assert.equal(orders.length, 1);
+    });
+  });
+
+  describe('getSellOrders()', () => {
+    beforeEach(async function() {
+      await exchange.registerToken(bookToken.address, "Book1");
+      await bookToken.approve(exchange.address, 1, {from: bookHolder});
+      await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
+    });
+
+    it('should raise exception if unknown book token specified', async () => {
+      await expectThrow(exchange.getSellOrders(0xff));
+    });
+
+    it('should return empty list if no orders', async () => {
       let orders = await exchange.getSellOrders.call(bookToken.address);
 
       assert.equal(orders.length, 0);
     });
 
-    it('getBuyOrders() on added order returns order', async () => {
-      await exchange.placeBuyOrder(bookToken.address, 5, 5);
-
-      let orders = await exchange.getBuyOrders(bookToken.address);
-      id = orders[0];
-
-      order = await exchange.getBuyOrder(bookToken.address, id);
-
-      assert.equal(order[0].toNumber(), 5);
-      assert.equal(order[1].toNumber(), 5);
-    });
-
-    it('getSellOrders() on added order returns order', async () => {
-      await exchange.placeSellOrder(bookToken.address, 5, 5);
+    it('should return orders on success', async () => {
+      await exchange.placeSellOrder(bookToken.address, 1, 1, {from: bookHolder});
 
       let orders = await exchange.getSellOrders(bookToken.address);
-      id = orders[0];
 
-      order = await exchange.getSellOrder(bookToken.address, id);
-
-      assert.equal(order[0].toNumber(), 5);
-      assert.equal(order[1].toNumber(), 5);
+      assert.equal(orders.length, 1);
     });
   });
 
-  describe('cancelBuyOrder() / cancelSellOrder()', () => {
+  describe('cancelBuyOrder()', () => {
+    let orderId;
+
     beforeEach(async () => {
       await exchange.registerToken(bookToken.address, "Book1");
+      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await exchange.depositPbl(1, {from: pblHolder});
+
+      await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
+      orderId = (await exchange.getBuyOrders(bookToken.address))[0];
     });
 
-    it('cancelBuyOrder() on unknown token raises exception', async () => {
-      await expectThrow(exchange.cancelBuyOrder(0xff, "123"));
+    it('should raise exception if unknown book token specified', async () => {
+      await expectThrow(exchange.cancelBuyOrder(0xff, "123", {from: pblHolder}));
     });
 
-    it('cancelSellOrder() on unknown token raises exception', async () => {
-      await expectThrow(exchange.cancelSellOrder(0xff, "123"));
+    it('should raise exception if order id not found', async () => {
+      await expectThrow(exchange.cancelBuyOrder(bookToken.address, "123", {from: pblHolder}));
     });
 
-    it('cancelBuyOrder() on unknown order ID raises exception', async () => {
-      await expectThrow(exchange.cancelBuyOrder(bookToken.address, "123"));
+    it('should raise exception on attempt to cancel order not from owner', async () => {
+      await expectThrow(exchange.cancelBuyOrder(bookToken.address, orderId, {from: adversary}));
     });
 
-    it('cancelSellOrder() on unknown order ID raises exception', async () => {
-      await expectThrow(exchange.cancelSellOrder(bookToken.address, "123"));
+    it('should emit BuyOrderCancelled on success', async () => {
+      truffleAssert.eventEmitted(await exchange.cancelBuyOrder(bookToken.address, orderId, {from: pblHolder}), 'BuyOrderCanceled');
     });
 
-    it('cancelBuyOrder() from another sender raises exception', async () => {
-      let id = await exchange.placeBuyOrder(bookToken.address, 1, 1);
-
-      await expectThrow(exchange.cancelBuyOrder.call(bookToken.address, id, {from: adversary}));
-    });
-
-    it('cancelSellOrder() from another sender raises exception', async () => {
-      let id = await exchange.placeSellOrder(bookToken.address, 1, 1);
-
-      await expectThrow(exchange.cancelSellOrder.call(bookToken.address, id, {from: adversary}));
-    });
-
-    it('cancelBuyOrder() on success emits BuyOrderCancelled', async () => {
-      await exchange.placeBuyOrder(bookToken.address, 1, 1);
-
-      let id = (await exchange.getBuyOrders(bookToken.address))[0];
-
-      truffleAssert.eventEmitted(await exchange.cancelBuyOrder(bookToken.address, id), 'BuyOrderCanceled');
-    });
-
-    it('cancelSellOrder() on success emits SellOrderCanceled', async () => {
-      await exchange.placeSellOrder(bookToken.address, 1, 1);
-
-      let id = (await exchange.getSellOrders(bookToken.address))[0];
-
-      truffleAssert.eventEmitted(await exchange.cancelSellOrder(bookToken.address, id), 'SellOrderCanceled');
-    });
-
-    it('cancelBuyOrder() on added order removes order', async () => {
-      await exchange.placeBuyOrder(bookToken.address, 5, 5);
-
-      let id = (await exchange.getBuyOrders(bookToken.address))[0];
-
-      await exchange.cancelBuyOrder(bookToken.address, id);
-
+    it('should remove order on success', async () => {
+      await exchange.cancelBuyOrder(bookToken.address, orderId, {from: pblHolder});
       let orders = await exchange.getBuyOrders(bookToken.address);
 
       assert.equal(orders.length, 0);
     });
+  });
 
-    it('cancelSellOrder() on added order removes order', async () => {
-      await exchange.placeSellOrder(bookToken.address, 5, 5);
+  describe('cancelSellOrder()', () => {
+    let orderId;
 
-      let id = (await exchange.getSellOrders(bookToken.address))[0];
+    beforeEach(async () => {
+      await exchange.registerToken(bookToken.address, "Book1");
+      await bookToken.approve(exchange.address, 1, {from: bookHolder});
+      await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
 
-      await exchange.cancelSellOrder(bookToken.address, id);
+      await exchange.placeSellOrder(bookToken.address, 1, 1, {from: bookHolder});
+      orderId = (await exchange.getSellOrders(bookToken.address))[0];
+    });
 
+    it('should raise exception if unknown book token specified', async () => {
+      await expectThrow(exchange.cancelSellOrder(0xff, "123", {from: bookHolder}));
+    });
+
+    it('should raise exception if order id not found', async () => {
+      await expectThrow(exchange.cancelSellOrder(bookToken.address, "123", {from: bookHolder}));
+    });
+
+    it('should raise exception on attempt to cancel order not from owner', async () => {
+      await expectThrow(exchange.cancelSellOrder.call(bookToken.address, id, {from: adversary}));
+    });
+
+    it('should emit SellOrderCanceled on success', async () => {
+      truffleAssert.eventEmitted(await exchange.cancelSellOrder(bookToken.address, orderId, {from: bookHolder}), 'SellOrderCanceled');
+    });
+
+    it('should remove order on success', async () => {
+      await exchange.cancelSellOrder(bookToken.address, orderId, {from: bookHolder});
       let orders = await exchange.getSellOrders(bookToken.address);
 
       assert.equal(orders.length, 0);

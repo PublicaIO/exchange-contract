@@ -1,4 +1,4 @@
-pragma solidity ^0.4.17;
+pragma solidity ^0.4.22;
 
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
@@ -59,13 +59,15 @@ contract Exchange is Ownable, HasNoEther {
     event BuyOrderCanceled(bytes16 indexed _id, address indexed _tokenAddress);
     event SellOrderCanceled(bytes16 indexed _id, address indexed _tokenAddress);
 
+    event DEBUGS(string indexed message);
+
     constructor(ERC20 _pebbles) public {
         pebbles = _pebbles;
     }
 
     function registerToken(address _tokenAddress, string _symbol) public onlyOwner {
-        require(bytes(_symbol).length > 0);
-        require(bytes(tokens[_tokenAddress].symbol).length == 0);
+        require(bytes(_symbol).length > 0, "Book token title must be specified");
+        require(bytes(tokens[_tokenAddress].symbol).length == 0, "Book token already registered");
 
         tokens[_tokenAddress].symbol = _symbol;
         tokensIndex.push(_tokenAddress);
@@ -207,10 +209,10 @@ contract Exchange is Ownable, HasNoEther {
 
     function placeBuyOrder(address _tokenAddress, uint _amountTokens, uint _pricePbl) public returns (bytes16) {
         uint totalPbl = SafeMath.mul(_amountTokens, _pricePbl);
-        require(SafeMath.sub(pblBalanceOf(msg.sender), pblEncumberanceOf(msg.sender)) >= totalPbl);
+
+        require(SafeMath.add(totalPbl, pblEncumberanceOf(msg.sender)) <= pblBalanceOf(msg.sender), "Insufficient PBL balance");
 
         bytes16 id = placeOrder(BUY, _tokenAddress, _amountTokens, _pricePbl);
-
         pblEncumberance[msg.sender] = SafeMath.add(pblEncumberance[msg.sender], totalPbl);
 
         emit BuyOrderCreated(id, _tokenAddress, msg.sender, _amountTokens, _pricePbl);
@@ -219,7 +221,7 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function placeSellOrder(address _tokenAddress, uint _amountTokens, uint _pricePbl) public returns (bytes16) {
-        require(SafeMath.sub(tokenBalanceOf(_tokenAddress, msg.sender), tokenEncumberanceOf(_tokenAddress, msg.sender)) >= _amountTokens);
+        require(SafeMath.add(_amountTokens, tokenEncumberanceOf(_tokenAddress, msg.sender)) <= tokenBalanceOf(_tokenAddress, msg.sender), "Insufficient book token balance");
 
         bytes16 id = placeOrder(SELL, _tokenAddress, _amountTokens, _pricePbl);
 
