@@ -23,21 +23,21 @@ contract("Exchange", (accounts) => {
 
   describe('registerToken()', () => {
     it('registerToken() raises exception on double added token', async () => {
-      await exchange.registerToken(0x01, "Book1");
-      await expectThrow(exchange.registerToken(0x01, "Book2"));
+      await exchange.registerToken(bookToken.address, "Book1");
+      await expectThrow(exchange.registerToken(bookToken.address, "Book2"));
     });
 
     it('registerToken() on success emits TokenAddedToSystem', async () => {
-      truffleAssert.eventEmitted(await exchange.registerToken(0x01, "Book1"), 'TokenAddedToSystem');
+      truffleAssert.eventEmitted(await exchange.registerToken(bookToken.address, "Book1"), 'TokenAddedToSystem');
     });
 
     it('registerToken() registers token', async () => {
-      await exchange.registerToken(0x01, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1");
 
-      let symbol = await exchange.tokens.call(0x01);
+      let symbol = await exchange.tokens.call(bookToken.address);
       let address = await exchange.tokensIndex.call(0);
 
-      assert.equal(address, 0x01);
+      assert.equal(address, bookToken.address);
       assert.equal(symbol, ["Book1"]);
     });
   });
@@ -151,9 +151,9 @@ contract("Exchange", (accounts) => {
   });
 
   // it('getMarket() should return empty market', async function() {
-  //   let result = await exchange.registerToken(0x01, "Book1");
+  //   let result = await exchange.registerToken(bookToken.address, "Book1");
 
-  //   let [symbol, buyTotalTokens, sellTotalTokens, buyTotalPBL, sellTotalPBL] = await exchange.getMarket(0x01);
+  //   let [symbol, buyTotalTokens, sellTotalTokens, buyTotalPBL, sellTotalPBL] = await exchange.getMarket(bookToken.address);
 
   //   assert.equal(symbol, 'Book1');
   //   assert.equal(buyTotalTokens.toNumber(), 0);
@@ -163,13 +163,13 @@ contract("Exchange", (accounts) => {
   // });
 
   // it('getMarket() on unknown token must raise exception', async function() {
-  //   let result = await exchange.registerToken(0x01, "Book1");
+  //   let result = await exchange.registerToken(bookToken.address, "Book1");
   //   await expectThrow(exchange.getMarket(0x02));
   // });
 
   describe('placeBuyOrder() / placeSellOrder()', () => {
     beforeEach(async () => {
-      await exchange.registerToken(0x01, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1");
     });
 
     it('placeBuyOrder() on unknown token raises exception', async () => {
@@ -181,54 +181,54 @@ contract("Exchange", (accounts) => {
     });
 
     it('placeBuyOrder() with incorrect number of tokens raises exception', async () => {
-      await expectThrow(exchange.placeBuyOrder(0x01, 0, 1));
+      await expectThrow(exchange.placeBuyOrder(bookToken.address, 0, 1));
     });
 
     it('placeSellOrder() with incorrect number of tokens raises exception', async () => {
-      await expectThrow(exchange.placeSellOrder(0x01, 0, 1));
+      await expectThrow(exchange.placeSellOrder(bookToken.address, 0, 1));
     });
 
     it('placeBuyOrder() with incorrect price raises exception', async () => {
-      await expectThrow(exchange.placeBuyOrder(0x01, 1, 0));
+      await expectThrow(exchange.placeBuyOrder(bookToken.address, 1, 0));
     });
 
     it('placeSellOrder() with incorrect price raises exception', async () => {
-      await expectThrow(exchange.placeSellOrder(0x01, 1, 0));
+      await expectThrow(exchange.placeSellOrder(bookToken.address, 1, 0));
     });
 
     it('placeBuyOrder() on success emits BuyOrderCreated', async () => {
-      truffleAssert.eventEmitted(await exchange.placeBuyOrder(0x01, 1, 1), 'BuyOrderCreated');
+      truffleAssert.eventEmitted(await exchange.placeBuyOrder(bookToken.address, 1, 1), 'BuyOrderCreated');
     });
 
     it('placeBuyOrder() on success emits SellOrderCreated', async () => {
-      truffleAssert.eventEmitted(await exchange.placeSellOrder(0x01, 1, 1), 'SellOrderCreated');
+      truffleAssert.eventEmitted(await exchange.placeSellOrder(bookToken.address, 1, 1), 'SellOrderCreated');
     });
   });
 
   describe('getBuyOrder() / getSellOrder()', () => {
     beforeEach(async () => {
-      await exchange.registerToken(0x01, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1");
     });
 
     it('getBuyOrder() returns correct order', async () => {
-      await exchange.placeBuyOrder(0x01, 5, 5);
+      await exchange.placeBuyOrder(bookToken.address, 5, 5);
 
-      let orders = await exchange.getBuyOrders(0x01);
+      let orders = await exchange.getBuyOrders(bookToken.address);
       id = orders[0];
 
-      order = await exchange.getBuyOrder(0x01, id);
+      order = await exchange.getBuyOrder(bookToken.address, id);
 
       assert.equal(order[0].toNumber(), 5);
       assert.equal(order[1].toNumber(), 5);
     });
 
     it('getSellOrder() returns correct order', async () => {
-      await exchange.placeSellOrder(0x01, 5, 5);
+      await exchange.placeSellOrder(bookToken.address, 5, 5);
 
-      let orders = await exchange.getSellOrders(0x01);
+      let orders = await exchange.getSellOrders(bookToken.address);
       id = orders[0];
 
-      order = await exchange.getSellOrder(0x01, id);
+      order = await exchange.getSellOrder(bookToken.address, id);
 
       assert.equal(order[0].toNumber(), 5);
       assert.equal(order[1].toNumber(), 5);
@@ -237,7 +237,7 @@ contract("Exchange", (accounts) => {
 
   describe('getBuyOrders() / getSellOrders()', () => {
     beforeEach(async function() {
-      await exchange.registerToken(0x01, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1");
     });
 
     it('getBuyOrders() on unknown token raises exception', async () => {
@@ -249,36 +249,36 @@ contract("Exchange", (accounts) => {
     });
 
     it('getBuyOrders() on empty orders returns empty list', async () => {
-      let orders = await exchange.getBuyOrders.call(0x01);
+      let orders = await exchange.getBuyOrders.call(bookToken.address);
 
       assert.equal(orders.length, 0);
     });
 
     it('getSellOrders() on empty orders returns empty list', async () => {
-      let orders = await exchange.getSellOrders.call(0x01);
+      let orders = await exchange.getSellOrders.call(bookToken.address);
 
       assert.equal(orders.length, 0);
     });
 
     it('getBuyOrders() on added order returns order', async () => {
-      await exchange.placeBuyOrder(0x01, 5, 5);
+      await exchange.placeBuyOrder(bookToken.address, 5, 5);
 
-      let orders = await exchange.getBuyOrders(0x01);
+      let orders = await exchange.getBuyOrders(bookToken.address);
       id = orders[0];
 
-      order = await exchange.getBuyOrder(0x01, id);
+      order = await exchange.getBuyOrder(bookToken.address, id);
 
       assert.equal(order[0].toNumber(), 5);
       assert.equal(order[1].toNumber(), 5);
     });
 
     it('getSellOrders() on added order returns order', async () => {
-      await exchange.placeSellOrder(0x01, 5, 5);
+      await exchange.placeSellOrder(bookToken.address, 5, 5);
 
-      let orders = await exchange.getSellOrders(0x01);
+      let orders = await exchange.getSellOrders(bookToken.address);
       id = orders[0];
 
-      order = await exchange.getSellOrder(0x01, id);
+      order = await exchange.getSellOrder(bookToken.address, id);
 
       assert.equal(order[0].toNumber(), 5);
       assert.equal(order[1].toNumber(), 5);
@@ -287,7 +287,7 @@ contract("Exchange", (accounts) => {
 
   describe('cancelBuyOrder() / cancelSellOrder()', () => {
     beforeEach(async () => {
-      await exchange.registerToken(0x01, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1");
     });
 
     it('cancelBuyOrder() on unknown token raises exception', async () => {
@@ -299,61 +299,61 @@ contract("Exchange", (accounts) => {
     });
 
     it('cancelBuyOrder() on unknown order ID raises exception', async () => {
-      await expectThrow(exchange.cancelBuyOrder(0x01, "123"));
+      await expectThrow(exchange.cancelBuyOrder(bookToken.address, "123"));
     });
 
     it('cancelSellOrder() on unknown order ID raises exception', async () => {
-      await expectThrow(exchange.cancelSellOrder(0x01, "123"));
+      await expectThrow(exchange.cancelSellOrder(bookToken.address, "123"));
     });
 
     it('cancelBuyOrder() from another sender raises exception', async () => {
-      let id = await exchange.placeBuyOrder(0x01, 1, 1);
+      let id = await exchange.placeBuyOrder(bookToken.address, 1, 1);
 
-      await expectThrow(exchange.cancelBuyOrder.call(0x01, id, {from: adversary}));
+      await expectThrow(exchange.cancelBuyOrder.call(bookToken.address, id, {from: adversary}));
     });
 
     it('cancelSellOrder() from another sender raises exception', async () => {
-      let id = await exchange.placeSellOrder(0x01, 1, 1);
+      let id = await exchange.placeSellOrder(bookToken.address, 1, 1);
 
-      await expectThrow(exchange.cancelSellOrder.call(0x01, id, {from: adversary}));
+      await expectThrow(exchange.cancelSellOrder.call(bookToken.address, id, {from: adversary}));
     });
 
     it('cancelBuyOrder() on success emits BuyOrderCancelled', async () => {
-      await exchange.placeBuyOrder(0x01, 1, 1);
+      await exchange.placeBuyOrder(bookToken.address, 1, 1);
 
-      let id = (await exchange.getBuyOrders(0x01))[0];
+      let id = (await exchange.getBuyOrders(bookToken.address))[0];
 
-      truffleAssert.eventEmitted(await exchange.cancelBuyOrder(0x01, id), 'BuyOrderCanceled');
+      truffleAssert.eventEmitted(await exchange.cancelBuyOrder(bookToken.address, id), 'BuyOrderCanceled');
     });
 
     it('cancelSellOrder() on success emits SellOrderCanceled', async () => {
-      await exchange.placeSellOrder(0x01, 1, 1);
+      await exchange.placeSellOrder(bookToken.address, 1, 1);
 
-      let id = (await exchange.getSellOrders(0x01))[0];
+      let id = (await exchange.getSellOrders(bookToken.address))[0];
 
-      truffleAssert.eventEmitted(await exchange.cancelSellOrder(0x01, id), 'SellOrderCanceled');
+      truffleAssert.eventEmitted(await exchange.cancelSellOrder(bookToken.address, id), 'SellOrderCanceled');
     });
 
     it('cancelBuyOrder() on added order removes order', async () => {
-      await exchange.placeBuyOrder(0x01, 5, 5);
+      await exchange.placeBuyOrder(bookToken.address, 5, 5);
 
-      let id = (await exchange.getBuyOrders(0x01))[0];
+      let id = (await exchange.getBuyOrders(bookToken.address))[0];
 
-      await exchange.cancelBuyOrder(0x01, id);
+      await exchange.cancelBuyOrder(bookToken.address, id);
 
-      let orders = await exchange.getBuyOrders(0x01);
+      let orders = await exchange.getBuyOrders(bookToken.address);
 
       assert.equal(orders.length, 0);
     });
 
     it('cancelSellOrder() on added order removes order', async () => {
-      await exchange.placeSellOrder(0x01, 5, 5);
+      await exchange.placeSellOrder(bookToken.address, 5, 5);
 
-      let id = (await exchange.getSellOrders(0x01))[0];
+      let id = (await exchange.getSellOrders(bookToken.address))[0];
 
-      await exchange.cancelSellOrder(0x01, id);
+      await exchange.cancelSellOrder(bookToken.address, id);
 
-      let orders = await exchange.getSellOrders(0x01);
+      let orders = await exchange.getSellOrders(bookToken.address);
 
       assert.equal(orders.length, 0);
     });
@@ -369,25 +369,25 @@ contract("Exchange", (accounts) => {
     });
 
     it('fulfillBuyOrder() on unknown order raises exception', async () => {
-      await exchange.registerToken(0x01, "Book1");
-      await expectThrow(exchange.fulfillBuyOrder(0x01, "123", 1));
+      await exchange.registerToken(bookToken.address, "Book1");
+      await expectThrow(exchange.fulfillBuyOrder(bookToken.address, "123", 1));
     });
 
     it('fulfillBuyOrder() with wrong amount of tokens raises exception', async () => {
-      await exchange.placeBuyOrder(0x01, 1, 10);
+      await exchange.placeBuyOrder(bookToken.address, 1, 10);
 
-      let id = (await exchange.getBuyOrders(0x01))[0];
+      let id = (await exchange.getBuyOrders(bookToken.address))[0];
 
-      await expectThrow(exchange.fulfillBuyOrder(0x01, id, 0));
+      await expectThrow(exchange.fulfillBuyOrder(bookToken.address, id, 0));
     });
 
     it('fulfillBuyOrder() raises exception on insufficient token balance', async () => {
-      await exchange.depositPBL.call(0x01, 1, 10, {from: other_account});
-      await exchange.placeBuyOrder.call(0x01, 1, 10, {from: other_account});
+      await exchange.depositPBL.call(bookToken.address, 1, 10, {from: other_account});
+      await exchange.placeBuyOrder.call(bookToken.address, 1, 10, {from: other_account});
 
-      let id = (await exchange.getBuyOrders(0x01))[0];
+      let id = (await exchange.getBuyOrders(bookToken.address))[0];
 
-      await expectThrow(exchange.fulfillBuyOrder(0x01, id, 10));
+      await expectThrow(exchange.fulfillBuyOrder(bookToken.address, id, 10));
     });
   });
 });
