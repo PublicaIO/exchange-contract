@@ -76,13 +76,13 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function depositToken(address _tokenAddress, uint _amountTokens) public {
-        require(_amountTokens > 0);
-        require(bytes(tokens[_tokenAddress].symbol).length > 0);
+        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
+        require(_amountTokens > 0, "Incorrect amount");
 
         ERC20 token = ERC20(_tokenAddress);
 
-        require(token.allowance(msg.sender, address(this)) >= _amountTokens);
-        require(token.transferFrom(msg.sender, address(this), _amountTokens) == true);
+        require(token.allowance(msg.sender, address(this)) >= _amountTokens, "Amount not approved in source contract");
+        require(token.transferFrom(msg.sender, address(this), _amountTokens) == true, "Transfer from source contract failed");
 
         tokenBalance[msg.sender][_tokenAddress] = SafeMath.add(tokenBalance[msg.sender][_tokenAddress], _amountTokens);
 
@@ -90,23 +90,23 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function withdrawToken(address _tokenAddress, uint _amountTokens) public {
-        require(_amountTokens > 0);
-        require(bytes(tokens[_tokenAddress].symbol).length > 0);
-        require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens);
+        require(_amountTokens > 0, "Incorrect amount");
+        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
+        require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens, "Requested amount is above available balance");
 
         tokenBalance[msg.sender][_tokenAddress] = SafeMath.sub(tokenBalance[msg.sender][_tokenAddress], _amountTokens);
 
         ERC20 token = ERC20(_tokenAddress);
 
-        require(token.transfer(msg.sender, _amountTokens) == true);
+        require(token.transfer(msg.sender, _amountTokens) == true, "Transfer to source contract failed");
 
         emit WithdrawalToken(msg.sender, _tokenAddress, _amountTokens);
     }
 
     function depositPbl(uint _amountPbl) public {
-        require(_amountPbl > 0);
-        require(pebbles.allowance(msg.sender, address(this)) >= _amountPbl);
-        require(pebbles.transferFrom(msg.sender, address(this), _amountPbl) == true);
+        require(_amountPbl > 0, "Incorrect amount");
+        require(pebbles.allowance(msg.sender, address(this)) >= _amountPbl, "Amount not approved in source contract");
+        require(pebbles.transferFrom(msg.sender, address(this), _amountPbl) == true, "Transfer from source contract failed");
 
         pblBalance[msg.sender] = SafeMath.add(pblBalance[msg.sender], _amountPbl);
 
@@ -114,12 +114,12 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function withdrawPbl(uint _amountPbl) public {
-        require(_amountPbl > 0);
-        require(pblBalance[msg.sender] >= _amountPbl);
+        require(_amountPbl > 0, "Incorrect amount");
+        require(pblBalance[msg.sender] >= _amountPbl, "Requested amount is above available balance");
 
         pblBalance[msg.sender] = SafeMath.sub(pblBalance[msg.sender], _amountPbl);
 
-        require(pebbles.transfer(msg.sender, _amountPbl) == true);
+        require(pebbles.transfer(msg.sender, _amountPbl) == true, "Transfer to source contract failed");
 
         emit WithdrawalPBL(msg.sender, _amountPbl);
     }
@@ -184,8 +184,8 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function getOrder(uint8 _buyOrSell, address _tokenAddress, bytes16 _id) private view returns (uint, uint) {
-        require(_buyOrSell == BUY || _buyOrSell == SELL);
-        require(bytes(tokens[_tokenAddress].symbol).length > 0);
+        require(_buyOrSell == BUY || _buyOrSell == SELL, "BUY or SELL");
+        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
 
         mapping (bytes16 => Order) orders = tokens[_tokenAddress].orders[_buyOrSell];
 
@@ -201,8 +201,8 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function getOrders(uint8 _buyOrSell, address _tokenAddress) private view returns (bytes16[]) {
-        require(_buyOrSell == BUY || _buyOrSell == SELL);
-        require(bytes(tokens[_tokenAddress].symbol).length > 0);
+        require(_buyOrSell == BUY || _buyOrSell == SELL, "BUY or SELL");
+        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
 
         return tokens[_tokenAddress].ordersIndex[_buyOrSell];
     }
@@ -210,7 +210,7 @@ contract Exchange is Ownable, HasNoEther {
     function placeBuyOrder(address _tokenAddress, uint _amountTokens, uint _pricePbl) public returns (bytes16) {
         uint totalPbl = SafeMath.mul(_amountTokens, _pricePbl);
 
-        require(SafeMath.add(totalPbl, pblEncumberanceOf(msg.sender)) <= pblBalanceOf(msg.sender), "Insufficient PBL balance");
+        require(SafeMath.add(totalPbl, pblEncumberanceOf(msg.sender)) <= pblBalanceOf(msg.sender), "Insufficient balance");
 
         bytes16 id = placeOrder(BUY, _tokenAddress, _amountTokens, _pricePbl);
         pblEncumberance[msg.sender] = SafeMath.add(pblEncumberance[msg.sender], totalPbl);
@@ -221,7 +221,7 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function placeSellOrder(address _tokenAddress, uint _amountTokens, uint _pricePbl) public returns (bytes16) {
-        require(SafeMath.add(_amountTokens, tokenEncumberanceOf(_tokenAddress, msg.sender)) <= tokenBalanceOf(_tokenAddress, msg.sender), "Insufficient book token balance");
+        require(SafeMath.add(_amountTokens, tokenEncumberanceOf(_tokenAddress, msg.sender)) <= tokenBalanceOf(_tokenAddress, msg.sender), "Insufficient balance");
 
         bytes16 id = placeOrder(SELL, _tokenAddress, _amountTokens, _pricePbl);
 
@@ -233,10 +233,10 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function placeOrder(uint8 _buyOrSell, address _tokenAddress, uint _amountTokens, uint _pricePbl) private returns (bytes16) {
-        require(_buyOrSell == BUY || _buyOrSell == SELL);
-        require(bytes(tokens[_tokenAddress].symbol).length > 0);
-        require(_amountTokens > 0);
-        require(_pricePbl > 0);
+        require(_buyOrSell == BUY || _buyOrSell == SELL, "BUY or SELL");
+        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
+        require(_amountTokens > 0, "Incorrect amount");
+        require(_pricePbl > 0, "Incorrect price");
 
         mapping (bytes16 => Order) orders = tokens[_tokenAddress].orders[_buyOrSell];
         bytes16[] storage ordersIndex = tokens[_tokenAddress].ordersIndex[_buyOrSell];
@@ -244,7 +244,7 @@ contract Exchange is Ownable, HasNoEther {
         bytes16 id = bytes16(keccak256(abi.encodePacked(block.number, msg.sender, _tokenAddress, _buyOrSell, _amountTokens, _pricePbl)));
 
         // collision?
-        require(orders[id].pricePbl == 0);
+        require(orders[id].pricePbl == 0, "Hash collision");
 
         orders[id].owner = msg.sender;
         orders[id].amountTokens = _amountTokens;
@@ -275,15 +275,15 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function cancelOrder(uint8 _buyOrSell, address _tokenAddress, bytes16 _id) private {
-        require(_buyOrSell == BUY || _buyOrSell == SELL);
+        require(_buyOrSell == BUY || _buyOrSell == SELL, "BUY or SELL");
 
         Token storage token = tokens[_tokenAddress];
-        require(bytes(token.symbol).length > 0);
+        require(bytes(token.symbol).length > 0, "Token not registered");
 
         mapping (bytes16 => Order) orders = token.orders[_buyOrSell];
         bytes16[] storage ordersIndex = token.ordersIndex[_buyOrSell];
 
-        require(orders[_id].owner == msg.sender);
+        require(orders[_id].owner == msg.sender, "Not an owner or order doesn't exist");
 
         uint rowToDelete = orders[_id].index;
         bytes16 keyToMove = ordersIndex[ordersIndex.length - 1];
@@ -296,16 +296,16 @@ contract Exchange is Ownable, HasNoEther {
     function fulfillBuyOrder(address _tokenAddress, bytes16 _id, uint _amountTokens) public {
         Token storage token = tokens[_tokenAddress];
 
-        require(bytes(token.symbol).length > 0);
-        require(_amountTokens > 0);
+        require(bytes(token.symbol).length > 0, "Token not registered");
+        require(_amountTokens > 0, "Incorrect amount");
 
         mapping (bytes16 => Order) orders = token.orders[BUY];
         bytes16[] storage ordersIndex = token.ordersIndex[BUY];
 
         Order storage order = orders[_id];
 
-        require(order.pricePbl > 0);
-        require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens);
+        require(order.pricePbl > 0, "Order doesn't exist");
+        require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens, "Requested amount is above available balance");
 
         uint maxTokens = _amountTokens < order.amountTokens ? _amountTokens : order.amountTokens;
         uint totalPbl = SafeMath.mul(maxTokens, order.pricePbl);
@@ -336,22 +336,22 @@ contract Exchange is Ownable, HasNoEther {
     function fulfillSellOrder(address _tokenAddress, bytes16 _id, uint _amountTokens) public {
         Token storage token = tokens[_tokenAddress];
 
-        require(bytes(token.symbol).length > 0);
-        require(_amountTokens > 0);
+        require(bytes(token.symbol).length > 0, "Token not registered");
+        require(_amountTokens > 0, "Incorrect amount");
 
         mapping (bytes16 => Order) orders = token.orders[SELL];
         bytes16[] storage ordersIndex = token.ordersIndex[SELL];
 
         Order storage order = orders[_id];
 
-        require(order.pricePbl > 0);
+        require(order.pricePbl > 0, "Order doesn't exist");
 
         uint maxTokens = _amountTokens < order.amountTokens ? _amountTokens : order.amountTokens;
         uint totalPbl = SafeMath.mul(maxTokens, order.pricePbl);
 
         // TODO: encumberance
 
-        require(pblBalance[msg.sender] >= totalPbl);
+        require(pblBalance[msg.sender] >= totalPbl, "Requested amount is above available balance");
 
         tokenBalance[msg.sender][_tokenAddress] = SafeMath.add(tokenBalance[msg.sender][_tokenAddress], maxTokens);
         pblBalance[order.owner] = SafeMath.add(pblBalance[order.owner], totalPbl);
