@@ -75,8 +75,16 @@ contract Exchange is Ownable, HasNoEther {
         emit TokenAddedToSystem(_symbol);
     }
 
+    function haveTokenRegistered(address _tokenAddress) public view returns (bool) {
+        return bytes(tokens[_tokenAddress].symbol).length > 0;
+    }
+
+    function requireTokenRegistered(address _tokenAddress) private view {
+        require(haveTokenRegistered(_tokenAddress), "Token not registered");
+    }
+
     function depositToken(address _tokenAddress, uint _amountTokens) public {
-        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
+        requireTokenRegistered(_tokenAddress);
         require(_amountTokens > 0, "Incorrect amount");
 
         ERC20 token = ERC20(_tokenAddress);
@@ -90,8 +98,8 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function withdrawToken(address _tokenAddress, uint _amountTokens) public {
+        requireTokenRegistered(_tokenAddress);
         require(_amountTokens > 0, "Incorrect amount");
-        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
         require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens, "Requested amount is above available balance");
 
         tokenBalance[msg.sender][_tokenAddress] = SafeMath.sub(tokenBalance[msg.sender][_tokenAddress], _amountTokens);
@@ -140,76 +148,74 @@ contract Exchange is Ownable, HasNoEther {
         return pblEncumberance[_owner];
     }
 
+    function haveBuyOrder(address _tokenAddress, bytes16 _id) public view returns (bool) {
+        return haveOrder(BUY, _tokenAddress, _id);
+    }
 
-    // function getMarket(address tokenAddress) public view returns (
-    //     string symbol,
-    //     uint buyTotalTokens,
-    //     uint sellTotalTokens,
-    //     uint buyTotalPBL,
-    //     uint sellTotalPBL
-    // ) {
-    //     require(bytes(tokens[tokenAddress].symbol).length > 0);
+    function haveSellOrder(address _tokenAddress, bytes16 _id) public view returns (bool) {
+        return haveOrder(SELL, _tokenAddress, _id);
+    }
 
-    //     symbol = tokens[tokenAddress].symbol;
+    function haveOrder(uint8 _buyOrSell, address _tokenAddress, bytes16 _id) private view returns (bool) {
+        Token storage token = tokens[_tokenAddress];
 
-    //     (buyTotalTokens, buyTotalPBL) = countBuyOrders(tokenAddress);
-    //     (sellTotalTokens, sellTotalPBL) = countSellOrders(tokenAddress);
-    // }
+        bytes16[] storage ordersIndex = token.ordersIndex[_buyOrSell];
+        if (ordersIndex.length == 0) {
+            return false;
+        }
 
-    // function countBuyOrders(address tokenAddress) public view returns (uint totalTokens, uint totalPBL) {
-    //     return countOrders(BUY, tokenAddress);
-    // }
+        mapping (bytes16 => Order) orders = token.orders[_buyOrSell];
 
-    // function countSellOrders(address tokenAddress) public view returns (uint totalTokens, uint totalPBL) {
-    //     return countOrders(SELL, tokenAddress);
-    // }
+        return (ordersIndex[orders[_id].index] == _id);
+    }
 
-    // function countOrders(uint8 buyOrSell, address tokenAddress) private view returns (uint totalTokens, uint totalPBL) {
-    //     mapping (address => Order) orders = tokens[tokenAddress].orders[buyOrSell];
-    //     address[] memory ordersIndex = tokens[tokenAddress].ordersIndex[buyOrSell];
+    function requireHaveOrder(uint8 _buyOrSell, address _tokenAddress, bytes16 _id) private view {
+        require(haveOrder(_buyOrSell, _tokenAddress, _id), "Order doesn't exist");
+    }
 
-    //     for (uint i = 0; i < ordersIndex.length; i++) {
-    //         address trader = ordersIndex[i];
-    //         totalTokens = SafeMath.add(totalTokens, orders[trader].amountTokens);
-    //         totalPBL = SafeMath.add(totalPBL, SafeMath.mul(orders[trader].amountTokens, orders[trader].pricePBL));
-    //     }
-    // }
+    function requireOrderOwner(uint8 _buyOrSell, address _tokenAddress, bytes16 _id) private view {
+        require(tokens[_tokenAddress].orders[_buyOrSell][_id].owner == msg.sender, "Not an owner");
+    }
 
     function getBuyOrder(address _tokenAddress, bytes16 _id) public view returns (uint, uint) {
+        requireHaveOrder(BUY, _tokenAddress, _id);
+
         return getOrder(BUY, _tokenAddress, _id);
     }
 
     function getSellOrder(address _tokenAddress, bytes16 _id) public view returns (uint, uint) {
+        requireHaveOrder(SELL, _tokenAddress, _id);
+
         return getOrder(SELL, _tokenAddress, _id);
     }
 
     function getOrder(uint8 _buyOrSell, address _tokenAddress, bytes16 _id) private view returns (uint, uint) {
-        require(_buyOrSell == BUY || _buyOrSell == SELL, "BUY or SELL");
-        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
-
-        mapping (bytes16 => Order) orders = tokens[_tokenAddress].orders[_buyOrSell];
-
-        return (orders[_id].amountTokens, orders[_id].pricePbl);
+        return (tokens[_tokenAddress].orders[_buyOrSell][_id].amountTokens,
+            tokens[_tokenAddress].orders[_buyOrSell][_id].pricePbl);
     }
 
     function getBuyOrders(address _tokenAddress) public view returns (bytes16[]) {
+        requireTokenRegistered(_tokenAddress);
+
         return getOrders(BUY, _tokenAddress);
     }
 
     function getSellOrders(address _tokenAddress) public view returns (bytes16[]) {
+        requireTokenRegistered(_tokenAddress);
+
         return getOrders(SELL, _tokenAddress);
     }
 
     function getOrders(uint8 _buyOrSell, address _tokenAddress) private view returns (bytes16[]) {
-        require(_buyOrSell == BUY || _buyOrSell == SELL, "BUY or SELL");
-        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
-
         return tokens[_tokenAddress].ordersIndex[_buyOrSell];
     }
 
     function placeBuyOrder(address _tokenAddress, uint _amountTokens, uint _pricePbl) public returns (bytes16) {
-        uint totalPbl = SafeMath.mul(_amountTokens, _pricePbl);
+        requireTokenRegistered(_tokenAddress);
+        require(_amountTokens > 0, "Incorrect amount");
+        require(_pricePbl > 0, "Incorrect price");
 
+        uint totalPbl = SafeMath.mul(_amountTokens, _pricePbl);
         require(SafeMath.add(totalPbl, pblEncumberanceOf(msg.sender)) <= pblBalanceOf(msg.sender), "Insufficient balance");
 
         bytes16 id = placeOrder(BUY, _tokenAddress, _amountTokens, _pricePbl);
@@ -221,6 +227,9 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function placeSellOrder(address _tokenAddress, uint _amountTokens, uint _pricePbl) public returns (bytes16) {
+        requireTokenRegistered(_tokenAddress);
+        require(_amountTokens > 0, "Incorrect amount");
+        require(_pricePbl > 0, "Incorrect price");
         require(SafeMath.add(_amountTokens, tokenEncumberanceOf(_tokenAddress, msg.sender)) <= tokenBalanceOf(_tokenAddress, msg.sender), "Insufficient balance");
 
         bytes16 id = placeOrder(SELL, _tokenAddress, _amountTokens, _pricePbl);
@@ -233,11 +242,6 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function placeOrder(uint8 _buyOrSell, address _tokenAddress, uint _amountTokens, uint _pricePbl) private returns (bytes16) {
-        require(_buyOrSell == BUY || _buyOrSell == SELL, "BUY or SELL");
-        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
-        require(_amountTokens > 0, "Incorrect amount");
-        require(_pricePbl > 0, "Incorrect price");
-
         mapping (bytes16 => Order) orders = tokens[_tokenAddress].orders[_buyOrSell];
         bytes16[] storage ordersIndex = tokens[_tokenAddress].ordersIndex[_buyOrSell];
 
@@ -255,35 +259,37 @@ contract Exchange is Ownable, HasNoEther {
     }
 
     function cancelBuyOrder(address _tokenAddress, bytes16 _id) public {
-        uint totalPbl = SafeMath.mul(tokens[_tokenAddress].orders[BUY][_id].amountTokens, tokens[_tokenAddress].orders[BUY][_id].pricePbl);
+        requireTokenRegistered(_tokenAddress);
+        requireHaveOrder(BUY, _tokenAddress, _id);
+        requireOrderOwner(BUY, _tokenAddress, _id);
 
         cancelOrder(BUY, _tokenAddress, _id);
 
+        Order storage order = tokens[_tokenAddress].orders[BUY][_id];
+        uint totalPbl = SafeMath.mul(order.amountTokens, order.pricePbl);
         pblEncumberance[msg.sender] = SafeMath.sub(pblEncumberance[msg.sender], totalPbl);
 
         emit BuyOrderCanceled(_id, _tokenAddress);
     }
 
     function cancelSellOrder(address _tokenAddress, bytes16 _id) public {
-        uint amountTokens = tokens[_tokenAddress].orders[BUY][_id].amountTokens;
+        requireTokenRegistered(_tokenAddress);
+        requireHaveOrder(SELL, _tokenAddress, _id);
+        requireOrderOwner(SELL, _tokenAddress, _id);
 
         cancelOrder(SELL, _tokenAddress, _id);
 
+        uint amountTokens = tokens[_tokenAddress].orders[SELL][_id].amountTokens;
         tokenEncumberance[msg.sender][_tokenAddress] = SafeMath.sub(tokenEncumberance[msg.sender][_tokenAddress], amountTokens);
 
         emit SellOrderCanceled(_id, _tokenAddress);
     }
 
     function cancelOrder(uint8 _buyOrSell, address _tokenAddress, bytes16 _id) private {
-        require(_buyOrSell == BUY || _buyOrSell == SELL, "BUY or SELL");
-
         Token storage token = tokens[_tokenAddress];
-        require(bytes(token.symbol).length > 0, "Token not registered");
 
         mapping (bytes16 => Order) orders = token.orders[_buyOrSell];
         bytes16[] storage ordersIndex = token.ordersIndex[_buyOrSell];
-
-        require(orders[_id].owner == msg.sender, "Not an owner or order doesn't exist");
 
         uint rowToDelete = orders[_id].index;
         bytes16 keyToMove = ordersIndex[ordersIndex.length - 1];
@@ -294,25 +300,24 @@ contract Exchange is Ownable, HasNoEther {
 
     // sell tokens for PBLs
     function fulfillBuyOrder(address _tokenAddress, bytes16 _id, uint _amountTokens) public {
-        Token storage token = tokens[_tokenAddress];
-
-        require(bytes(token.symbol).length > 0, "Token not registered");
+        requireTokenRegistered(_tokenAddress);
+        requireHaveOrder(BUY, _tokenAddress, _id);
         require(_amountTokens > 0, "Incorrect amount");
+
+        Token storage token = tokens[_tokenAddress];
 
         mapping (bytes16 => Order) orders = token.orders[BUY];
         bytes16[] storage ordersIndex = token.ordersIndex[BUY];
 
-        Order storage order = orders[_id];
-
-        require(order.pricePbl > 0, "Order doesn't exist");
         require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens, "Requested amount is above available balance");
 
+        Order storage order = orders[_id];
         uint maxTokens = _amountTokens < order.amountTokens ? _amountTokens : order.amountTokens;
         uint totalPbl = SafeMath.mul(maxTokens, order.pricePbl);
 
         // TODO: encumberance
 
-        require(pblBalance[order.owner] >= totalPbl);
+        //require(pblBalance[order.owner] >= totalPbl, );
 
         tokenBalance[order.owner][_tokenAddress] = SafeMath.add(tokenBalance[order.owner][_tokenAddress], maxTokens);
         pblBalance[msg.sender] = SafeMath.add(pblBalance[msg.sender], totalPbl);
@@ -334,17 +339,16 @@ contract Exchange is Ownable, HasNoEther {
 
     // buy tokens for PBLs
     function fulfillSellOrder(address _tokenAddress, bytes16 _id, uint _amountTokens) public {
-        Token storage token = tokens[_tokenAddress];
-
-        require(bytes(token.symbol).length > 0, "Token not registered");
+        requireTokenRegistered(_tokenAddress);
+        requireHaveOrder(BUY, _tokenAddress, _id);
         require(_amountTokens > 0, "Incorrect amount");
+
+        Token storage token = tokens[_tokenAddress];
 
         mapping (bytes16 => Order) orders = token.orders[SELL];
         bytes16[] storage ordersIndex = token.ordersIndex[SELL];
 
         Order storage order = orders[_id];
-
-        require(order.pricePbl > 0, "Order doesn't exist");
 
         uint maxTokens = _amountTokens < order.amountTokens ? _amountTokens : order.amountTokens;
         uint totalPbl = SafeMath.mul(maxTokens, order.pricePbl);
@@ -370,5 +374,4 @@ contract Exchange is Ownable, HasNoEther {
 
         emit SellOrderFulfilled(_id, _tokenAddress, msg.sender);
     }
-
 }
