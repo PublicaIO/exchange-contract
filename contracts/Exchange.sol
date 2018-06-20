@@ -34,13 +34,15 @@ contract Exchange is Ownable, HasNoEther {
     // list of registered tokens (for querying list)
     address[] public tokensIndex;
 
+    // Balances of users
     // trader => token => amount
     mapping (address => mapping (address => uint)) tokenBalance;
     mapping (address => uint) pblBalance;
 
+    // User funds locked in orders
     // trader => token => amount
-    mapping (address => mapping (address => uint)) tokenEncumberance;
-    mapping (address => uint) pblEncumberance;
+    mapping (address => mapping (address => uint)) tokenLocked;
+    mapping (address => uint) pblLocked;
 
     event TokenAddedToSystem(string _token);
 
@@ -56,8 +58,8 @@ contract Exchange is Ownable, HasNoEther {
     event BuyOrderFulfilled(bytes16 indexed _id, address indexed _tokenAddress, address indexed _who);
     event SellOrderFulfilled(bytes16 indexed _id, address indexed _tokenAddress, address indexed _who);
 
-    event BuyOrderCanceled(bytes16 indexed _id, address indexed _tokenAddress);
-    event SellOrderCanceled(bytes16 indexed _id, address indexed _tokenAddress);
+    event BuyOrderCancelled(bytes16 indexed _id, address indexed _tokenAddress);
+    event SellOrderCancelled(bytes16 indexed _id, address indexed _tokenAddress);
 
     event DEBUGS(string indexed message);
 
@@ -132,20 +134,20 @@ contract Exchange is Ownable, HasNoEther {
         emit WithdrawalPBL(msg.sender, _amountPbl);
     }
 
-    function tokenBalanceOf(address tokenAddress, address _owner) public view returns (uint) {
-        return tokenBalance[_owner][tokenAddress];
+    function tokenBalanceOf(address _tokenAddress, address _owner) public view returns (uint) {
+        return tokenBalance[_owner][_tokenAddress];
     }
 
     function pblBalanceOf(address _owner) public view returns (uint) {
         return pblBalance[_owner];
     }
 
-    function tokenEncumberanceOf(address tokenAddress, address _owner) public view returns (uint) {
-        return tokenEncumberance[_owner][tokenAddress];
+    function tokenLockedOf(address _tokenAddress, address _owner) public view returns (uint) {
+        return tokenLocked[_owner][_tokenAddress];
     }
 
-    function pblEncumberanceOf(address _owner) public view returns (uint) {
-        return pblEncumberance[_owner];
+    function pblLockedOf(address _owner) public view returns (uint) {
+        return pblLocked[_owner];
     }
 
     function haveBuyOrder(address _tokenAddress, bytes16 _id) public view returns (bool) {
@@ -216,10 +218,10 @@ contract Exchange is Ownable, HasNoEther {
         require(_pricePbl > 0, "Incorrect price");
 
         uint totalPbl = SafeMath.mul(_amountTokens, _pricePbl);
-        require(SafeMath.add(totalPbl, pblEncumberanceOf(msg.sender)) <= pblBalanceOf(msg.sender), "Insufficient balance");
+        require(SafeMath.add(totalPbl, pblLockedOf(msg.sender)) <= pblBalanceOf(msg.sender), "Insufficient balance");
 
         bytes16 id = placeOrder(BUY, _tokenAddress, _amountTokens, _pricePbl);
-        pblEncumberance[msg.sender] = SafeMath.add(pblEncumberance[msg.sender], totalPbl);
+        pblLocked[msg.sender] = SafeMath.add(pblLocked[msg.sender], totalPbl);
 
         emit BuyOrderCreated(id, _tokenAddress, msg.sender, _amountTokens, _pricePbl);
 
@@ -230,11 +232,11 @@ contract Exchange is Ownable, HasNoEther {
         requireTokenRegistered(_tokenAddress);
         require(_amountTokens > 0, "Incorrect amount");
         require(_pricePbl > 0, "Incorrect price");
-        require(SafeMath.add(_amountTokens, tokenEncumberanceOf(_tokenAddress, msg.sender)) <= tokenBalanceOf(_tokenAddress, msg.sender), "Insufficient balance");
+        require(SafeMath.add(_amountTokens, tokenLockedOf(_tokenAddress, msg.sender)) <= tokenBalanceOf(_tokenAddress, msg.sender), "Insufficient balance");
 
         bytes16 id = placeOrder(SELL, _tokenAddress, _amountTokens, _pricePbl);
 
-        tokenEncumberance[msg.sender][_tokenAddress] = SafeMath.add(tokenEncumberance[msg.sender][_tokenAddress], _amountTokens);
+        tokenLocked[msg.sender][_tokenAddress] = SafeMath.add(tokenLocked[msg.sender][_tokenAddress], _amountTokens);
 
         emit SellOrderCreated(id, _tokenAddress, msg.sender, _amountTokens, _pricePbl);
 
@@ -267,9 +269,9 @@ contract Exchange is Ownable, HasNoEther {
 
         Order storage order = tokens[_tokenAddress].orders[BUY][_id];
         uint totalPbl = SafeMath.mul(order.amountTokens, order.pricePbl);
-        pblEncumberance[msg.sender] = SafeMath.sub(pblEncumberance[msg.sender], totalPbl);
+        pblLocked[msg.sender] = SafeMath.sub(pblLocked[msg.sender], totalPbl);
 
-        emit BuyOrderCanceled(_id, _tokenAddress);
+        emit BuyOrderCancelled(_id, _tokenAddress);
     }
 
     function cancelSellOrder(address _tokenAddress, bytes16 _id) public {
@@ -280,9 +282,9 @@ contract Exchange is Ownable, HasNoEther {
         cancelOrder(SELL, _tokenAddress, _id);
 
         uint amountTokens = tokens[_tokenAddress].orders[SELL][_id].amountTokens;
-        tokenEncumberance[msg.sender][_tokenAddress] = SafeMath.sub(tokenEncumberance[msg.sender][_tokenAddress], amountTokens);
+        tokenLocked[msg.sender][_tokenAddress] = SafeMath.sub(tokenLocked[msg.sender][_tokenAddress], amountTokens);
 
-        emit SellOrderCanceled(_id, _tokenAddress);
+        emit SellOrderCancelled(_id, _tokenAddress);
     }
 
     function cancelOrder(uint8 _buyOrSell, address _tokenAddress, bytes16 _id) private {
@@ -303,24 +305,22 @@ contract Exchange is Ownable, HasNoEther {
         requireTokenRegistered(_tokenAddress);
         requireHaveOrder(BUY, _tokenAddress, _id);
         require(_amountTokens > 0, "Incorrect amount");
+        require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens, "Requested amount is above available balance");
 
         Token storage token = tokens[_tokenAddress];
 
         mapping (bytes16 => Order) orders = token.orders[BUY];
         bytes16[] storage ordersIndex = token.ordersIndex[BUY];
 
-        require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens, "Requested amount is above available balance");
-
         Order storage order = orders[_id];
+        require(_amountTokens <= order.amountTokens, "Requested amount is above supply");
+
         uint maxTokens = _amountTokens < order.amountTokens ? _amountTokens : order.amountTokens;
         uint totalPbl = SafeMath.mul(maxTokens, order.pricePbl);
 
-        // TODO: encumberance
-
-        //require(pblBalance[order.owner] >= totalPbl, );
-
         tokenBalance[order.owner][_tokenAddress] = SafeMath.add(tokenBalance[order.owner][_tokenAddress], maxTokens);
         pblBalance[msg.sender] = SafeMath.add(pblBalance[msg.sender], totalPbl);
+        pblLocked[order.owner] = SafeMath.sub(pblLocked[order.owner], totalPbl);
 
         if (maxTokens == order.amountTokens) {
             uint rowToDelete = orders[_id].index;
@@ -332,15 +332,13 @@ contract Exchange is Ownable, HasNoEther {
             order.amountTokens = SafeMath.sub(order.amountTokens, maxTokens);
         }
 
-        // TODO: encumberance
-
         emit BuyOrderFulfilled(_id, _tokenAddress, msg.sender);
     }
 
     // buy tokens for PBLs
     function fulfillSellOrder(address _tokenAddress, bytes16 _id, uint _amountTokens) public {
         requireTokenRegistered(_tokenAddress);
-        requireHaveOrder(BUY, _tokenAddress, _id);
+        requireHaveOrder(SELL, _tokenAddress, _id);
         require(_amountTokens > 0, "Incorrect amount");
 
         Token storage token = tokens[_tokenAddress];
@@ -353,12 +351,12 @@ contract Exchange is Ownable, HasNoEther {
         uint maxTokens = _amountTokens < order.amountTokens ? _amountTokens : order.amountTokens;
         uint totalPbl = SafeMath.mul(maxTokens, order.pricePbl);
 
-        // TODO: encumberance
-
         require(pblBalance[msg.sender] >= totalPbl, "Requested amount is above available balance");
+        require(_amountTokens <= order.amountTokens, "Requested amount is above supply");
 
         tokenBalance[msg.sender][_tokenAddress] = SafeMath.add(tokenBalance[msg.sender][_tokenAddress], maxTokens);
         pblBalance[order.owner] = SafeMath.add(pblBalance[order.owner], totalPbl);
+        tokenLocked[order.owner][_tokenAddress] = SafeMath.sub(tokenLocked[order.owner][_tokenAddress], _amountTokens);
 
         if (maxTokens == order.amountTokens) {
             uint rowToDelete = orders[_id].index;
@@ -369,8 +367,6 @@ contract Exchange is Ownable, HasNoEther {
         } else {
             order.amountTokens = SafeMath.sub(order.amountTokens, maxTokens);
         }
-
-        // TODO: encumberance
 
         emit SellOrderFulfilled(_id, _tokenAddress, msg.sender);
     }

@@ -17,7 +17,7 @@ contract("Exchange", (accounts) => {
 
   beforeEach(async () => {
     pblToken = await PBLToken.new(pblHolder, 100);
-    bookToken = await BookToken.new(bookHolder, 1);
+    bookToken = await BookToken.new(bookHolder, 100);
     exchange = await Exchange.new(pblToken.address);
   });
 
@@ -173,14 +173,14 @@ contract("Exchange", (accounts) => {
       await expectThrow(exchange.placeBuyOrder(bookToken.address, 1, 2, {from: pblHolder}));
     });
 
-    it('should create PBL encumberance', async () => {
+    it('should create PBL lock', async () => {
       await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
-      let encumberance = await exchange.pblEncumberanceOf(pblHolder);
+      let lock = await exchange.pblLockedOf(pblHolder);
 
-      assert.equal(encumberance.toNumber(), 1);
+      assert.equal(lock.toNumber(), 1);
     });
 
-    it('should raise exception on existing PBL encumberance and insufficient PBL balance to create new order', async () => {
+    it('should raise exception on existing PBL lock and insufficient PBL balance to create new order', async () => {
       await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
 
       await expectThrow(exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder}));
@@ -220,14 +220,14 @@ contract("Exchange", (accounts) => {
       await expectThrow(exchange.placeSellOrder(bookToken.address, 2, 100, {from: bookHolder}));
     });
 
-    it('should create book token encumberance', async () => {
+    it('should create book token lock', async () => {
       await exchange.placeSellOrder(bookToken.address, 1, 1, {from: bookHolder});
-      let encumberance = await exchange.tokenEncumberanceOf(bookToken.address, bookHolder);
+      let lock = await exchange.tokenLockedOf(bookToken.address, bookHolder);
 
-      assert.equal(encumberance.toNumber(), 1);
+      assert.equal(lock.toNumber(), 1);
     });
 
-    it('should raise exception on existing book token encumberance and insufficient token balance to create new order', async () => {
+    it('should raise exception on existing book token lock and insufficient token balance to create new order', async () => {
       await exchange.placeSellOrder(bookToken.address, 1, 100, {from: bookHolder});
 
       await expectThrow(exchange.placeSellOrder(bookToken.address, 1, 1000, {from: bookHolder}));
@@ -362,7 +362,7 @@ contract("Exchange", (accounts) => {
     });
 
     it('should emit BuyOrderCancelled on success', async () => {
-      truffleAssert.eventEmitted(await exchange.cancelBuyOrder(bookToken.address, orderId, {from: pblHolder}), 'BuyOrderCanceled');
+      truffleAssert.eventEmitted(await exchange.cancelBuyOrder(bookToken.address, orderId, {from: pblHolder}), 'BuyOrderCancelled');
     });
 
     it('should remove order on success', async () => {
@@ -373,10 +373,10 @@ contract("Exchange", (accounts) => {
       await expectThrow(exchange.getBuyOrder(bookToken.address, orderId));
     });
 
-    it('should clear encumberance on success', async () => {
-      let before = await exchange.pblEncumberanceOf(pblHolder);
+    it('should clear lock on success', async () => {
+      let before = await exchange.pblLockedOf(pblHolder);
       await exchange.cancelBuyOrder(bookToken.address, orderId, {from: pblHolder});
-      let after = await exchange.pblEncumberanceOf(pblHolder);
+      let after = await exchange.pblLockedOf(pblHolder);
 
       assert.equal(before.toNumber(), 1);
       assert.equal(after.toNumber(), 0);
@@ -407,8 +407,8 @@ contract("Exchange", (accounts) => {
       await expectThrow(exchange.cancelSellOrder.call(bookToken.address, id, {from: adversary}));
     });
 
-    it('should emit SellOrderCanceled on success', async () => {
-      truffleAssert.eventEmitted(await exchange.cancelSellOrder(bookToken.address, orderId, {from: bookHolder}), 'SellOrderCanceled');
+    it('should emit SellOrderCancelled on success', async () => {
+      truffleAssert.eventEmitted(await exchange.cancelSellOrder(bookToken.address, orderId, {from: bookHolder}), 'SellOrderCancelled');
     });
 
     it('should remove order on success', async () => {
@@ -419,10 +419,10 @@ contract("Exchange", (accounts) => {
       await expectThrow(exchange.getSellOrder(bookToken.address, orderId));
     });
 
-    it('should clear encumberance on success', async () => {
-      let before = await exchange.tokenEncumberanceOf(bookToken.address, bookHolder);
+    it('should clear lock on success', async () => {
+      let before = await exchange.tokenLockedOf(bookToken.address, bookHolder);
       await exchange.cancelSellOrder(bookToken.address, orderId, {from: bookHolder});
-      let after = await exchange.tokenEncumberanceOf(bookToken.address, bookHolder);
+      let after = await exchange.tokenLockedOf(bookToken.address, bookHolder);
 
       assert.equal(before.toNumber(), 1);
       assert.equal(after.toNumber(), 0);
@@ -435,13 +435,13 @@ contract("Exchange", (accounts) => {
     beforeEach(async () => {
       await exchange.registerToken(bookToken.address, "Book1");
 
-      await pblToken.approve(exchange.address, 1, {from: pblHolder});
-      await exchange.depositPbl(1, {from: pblHolder});
+      await pblToken.approve(exchange.address, 2, {from: pblHolder});
+      await exchange.depositPbl(2, {from: pblHolder});
 
-      await bookToken.approve(exchange.address, 1, {from: bookHolder});
-      await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
+      await bookToken.approve(exchange.address, 2, {from: bookHolder});
+      await exchange.depositToken(bookToken.address, 2, {from: bookHolder});
 
-      await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
+      await exchange.placeBuyOrder(bookToken.address, 2, 1, {from: pblHolder});
       orderId = (await exchange.getBuyOrders(bookToken.address))[0];
     });
 
@@ -457,8 +457,111 @@ contract("Exchange", (accounts) => {
       await expectThrow(exchange.fulfillBuyOrder(bookToken.address, orderId, 0, {from: bookHolder}));
     });
 
+    it('should raise exception if requested number of tokens is above order', async () => {
+      await expectThrow(exchange.fulfillBuyOrder(bookToken.address, orderId, 3, {from: bookHolder}));
+    });
+
     it('should raise exception on insufficient token balance', async () => {
       await expectThrow(exchange.fulfillBuyOrder(bookToken.address, orderId, 10, {from: bookHolder}));
+    });
+
+    it('should fulfill full order', async () => {
+      await exchange.fulfillBuyOrder(bookToken.address, orderId, 2, {from: bookHolder});
+
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
+
+      assert.equal(await exchange.haveBuyOrder(bookToken.address, orderId), false);
+      assert.equal(bookHolderPbls.toNumber(), 2);
+      assert.equal(pblHolderTokens.toNumber(), 2);
+    });
+
+    it('should fulfill partial order', async () => {
+      await exchange.fulfillBuyOrder(bookToken.address, orderId, 1, {from: bookHolder});
+      let order = await exchange.getBuyOrder(bookToken.address, orderId);
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
+
+      assert.equal(order[0].toNumber(), 1);
+      assert.equal(bookHolderPbls.toNumber(), 1);
+      assert.equal(pblHolderTokens.toNumber(), 1);
+    });
+
+    it('should unlock funds after order fulfilled', async () => {
+      let before = await exchange.pblLockedOf(pblHolder);
+      await exchange.fulfillBuyOrder(bookToken.address, orderId, 2, {from: bookHolder});
+      let after = await exchange.pblLockedOf(pblHolder);
+
+      assert.equal(before.toNumber(), 2);
+      assert.equal(after.toNumber(), 0);
+    });
+  });
+
+  describe('fulfillSellOrder()', () => {
+    let orderId;
+
+    beforeEach(async () => {
+      await exchange.registerToken(bookToken.address, "Book1");
+
+      await pblToken.approve(exchange.address, 2, {from: pblHolder});
+      await exchange.depositPbl(2, {from: pblHolder});
+
+      await bookToken.approve(exchange.address, 2, {from: bookHolder});
+      await exchange.depositToken(bookToken.address, 2, {from: bookHolder});
+
+      await exchange.placeSellOrder(bookToken.address, 2, 1, {from: bookHolder});
+      orderId = (await exchange.getSellOrders(bookToken.address))[0];
+    });
+
+    it('should raise exception if unknown book token specified', async () => {
+      await expectThrow(exchange.fulfillSellOrder(0xff, "123", 1, {from: pblHolder}));
+    });
+
+    it('should raise exception if order id not found', async () => {
+      await expectThrow(exchange.fulfillSellOrder(bookToken.address, "123", 1, {from: pblHolder}));
+    });
+
+    it('should raise exception if incorrect number of tokens specified', async () => {
+      await expectThrow(exchange.fulfillSellOrder(bookToken.address, orderId, 0, {from: pblHolder}));
+    });
+
+    it('should raise exception if requested number of tokens is above order', async () => {
+      await expectThrow(exchange.fulfillSellOrder(bookToken.address, orderId, 3, {from: pblHolder}));
+    });
+
+    it('should raise exception on insufficient token balance', async () => {
+      await expectThrow(exchange.fulfillSellOrder(bookToken.address, orderId, 10, {from: pblHolder}));
+    });
+
+    it('should fulfill full order', async () => {
+      await exchange.fulfillSellOrder(bookToken.address, orderId, 2, {from: pblHolder});
+
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
+
+      assert.equal(await exchange.haveSellOrder(bookToken.address, orderId), false);
+      assert.equal(bookHolderPbls.toNumber(), 2);
+      assert.equal(pblHolderTokens.toNumber(), 2);
+    });
+
+    it('should fulfill partial order', async () => {
+      await exchange.fulfillSellOrder(bookToken.address, orderId, 1, {from: pblHolder});
+      let order = await exchange.getSellOrder(bookToken.address, orderId);
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
+
+      assert.equal(order[0].toNumber(), 1);
+      assert.equal(bookHolderPbls.toNumber(), 1);
+      assert.equal(pblHolderTokens.toNumber(), 1);
+    });
+
+    it('should unlock funds after order fulfilled', async () => {
+      let before = await exchange.tokenLockedOf(bookToken.address, bookHolder);
+      await exchange.fulfillSellOrder(bookToken.address, orderId, 2, {from: pblHolder});
+      let after = await exchange.tokenLockedOf(bookToken.address, bookHolder);
+
+      assert.equal(before.toNumber(), 2);
+      assert.equal(after.toNumber(), 0);
     });
   });
 });
