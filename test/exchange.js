@@ -1,53 +1,59 @@
 
-var truffleAssert = require('truffle-assertions');
-var expectThrow = require('./helper.js');
+var truffleAssert = require('truffle-assertions')
+var expectThrow = require('./helper.js')
 
-var ExchangeContract = artifacts.require("Exchange");
-var PebblesTokenContract = artifacts.require("PebblesTokenMock");
-var BookTokenContract = artifacts.require("BookTokenMock");
+var ExchangeContract = artifacts.require("Exchange")
+var PebblesTokenContract = artifacts.require("PebblesTokenMock")
+var BookTokenContract = artifacts.require("BookTokenMock")
 
 contract("Exchange", (accounts) => {
-  let owner = accounts[0];
-  let adversary = accounts[1];
-  let pblHolder = accounts[2];
-  let bookHolder = accounts[3];
-  let exchange;
-  let pebblesToken;
-  let bookToken;
+  let owner = accounts[0]
+  let adversary = accounts[1]
+  let pblHolder = accounts[2]
+  let bookHolder = accounts[3]
+  let systemCommissionReceiver = accounts[4]
+  let bookCommissionReceiver = accounts[5]
+  let exchange
+  let pebblesToken
+  let bookToken
+  const ONE_PBL = 10 ** 18
 
   beforeEach(async () => {
-    pebblesToken = await PebblesTokenContract.new();
-    bookToken = await BookTokenContract.new();
-    exchange = await ExchangeContract.new(pebblesToken.address);
+    pebblesToken = await PebblesTokenContract.new()
+    bookToken = await BookTokenContract.new()
+    exchange = await ExchangeContract.new(pebblesToken.address)
 
-    await pebblesToken.gimme(100, {from: pblHolder})
+    await pebblesToken.gimme(10 * ONE_PBL, {from: pblHolder})
     await bookToken.gimme(100, {from: bookHolder})
   });
 
   describe('registerToken()', () => {
     it('should raise exception on double added token', async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await expectThrow(exchange.registerToken(bookToken.address, "Book2"));
     });
 
     it('should emit TokenAddedToSystem on success', async () => {
-      truffleAssert.eventEmitted(await exchange.registerToken(bookToken.address, "Book1"), 'TokenAddedToSystem');
+      truffleAssert.eventEmitted(
+        await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver),
+        'TokenAddedToSystem'
+      );
     });
 
     it('should register book token', async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
 
-      let symbol = await exchange.tokens.call(bookToken.address);
-      let address = await exchange.tokensIndex.call(0);
+      let token = await exchange.getRegisteredToken(bookToken.address);
 
-      assert.equal(address, bookToken.address);
-      assert.equal(symbol, ["Book1"]);
+      assert.equal(token[0], "Book1");
+      assert.equal(token[1], 0);
+      assert.equal(token[2], bookCommissionReceiver);
     });
   });
 
   describe('depositToken()', () => {
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await bookToken.approve(exchange.address, 1, {from: bookHolder});
     });
 
@@ -76,9 +82,9 @@ contract("Exchange", (accounts) => {
 
   describe('withdrawToken()', () => {
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
-      await bookToken.approve(exchange.address, 1, {from: bookHolder});
-      await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
+      await bookToken.approve(exchange.address, 2, {from: bookHolder});
+      await exchange.depositToken(bookToken.address, 2, {from: bookHolder});
     });
 
     it('should raise exception if unknown book token specified', async () => {
@@ -90,17 +96,43 @@ contract("Exchange", (accounts) => {
     });
 
     it('should raise exception if withdraw amount more then balance', async () => {
-      await expectThrow(exchange.withdrawToken(bookToken.address, 2, {from: bookHolder}));
+      await expectThrow(exchange.withdrawToken(bookToken.address, 3, {from: bookHolder}));
     });
 
     it('should allow to withdraw a book token', async () => {
-      await exchange.withdrawToken(bookToken.address, 1, {from: bookHolder});
+      await exchange.withdrawToken(bookToken.address, 2, {from: bookHolder});
 
       var transferred = (await bookToken.balanceOf.call(exchange.address)).toNumber();
       assert.equal(transferred, 0);
 
       var deposited = (await exchange.tokenBalanceOf.call(bookToken.address, bookHolder)).toNumber();
       assert.equal(deposited, 0);
+    });
+
+    it('should allow to partially withdraw token', async () => {
+      await exchange.withdrawToken(bookToken.address, 1, {from: bookHolder});
+
+      var transferred = (await bookToken.balanceOf.call(exchange.address)).toNumber();
+      assert.equal(transferred, 1);
+
+      var deposited = (await exchange.tokenBalanceOf.call(bookToken.address, bookHolder)).toNumber();
+      assert.equal(deposited, 1);
+    });
+
+    it('should allow partial withdrawal if funds are locked', async () => {
+      await exchange.placeSellOrder(bookToken.address, 1, 1, {from: bookHolder})
+      await exchange.withdrawToken(bookToken.address, 1, {from: bookHolder});
+
+      var transferred = (await bookToken.balanceOf.call(exchange.address)).toNumber();
+      assert.equal(transferred, 1);
+
+      var deposited = (await exchange.tokenBalanceOf.call(bookToken.address, bookHolder)).toNumber();
+      assert.equal(deposited, 1);
+    });
+
+    it('should disallow withdrawal of locked tokens', async () => {
+      await exchange.placeSellOrder(bookToken.address, 1, 1, {from: bookHolder})
+      await expectThrow(exchange.withdrawToken(bookToken.address, 2, {from: bookHolder}));
     });
   });
 
@@ -130,8 +162,9 @@ contract("Exchange", (accounts) => {
 
   describe('withdrawPbl()', () => {
     beforeEach(async () => {
-      await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
-      await exchange.depositPbl(1, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 2, {from: pblHolder});
+      await exchange.depositPbl(2, {from: pblHolder});
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver, {from: owner});
     });
 
     it('should raise exception on invalid amount of PBL', async () => {
@@ -139,11 +172,11 @@ contract("Exchange", (accounts) => {
     });
 
     it('should raise exception if withdraw amount more then balance', async () => {
-      await expectThrow(exchange.withdrawPbl(2, {from: pblHolder}));
+      await expectThrow(exchange.withdrawPbl(3, {from: pblHolder}));
     });
 
     it('should allow to withdraw PBL', async () => {
-      await exchange.withdrawPbl(1, {from: pblHolder});
+      await exchange.withdrawPbl(2, {from: pblHolder});
 
       var transferred = (await pebblesToken.balanceOf.call(exchange.address)).toNumber();
       assert.equal(transferred, 0);
@@ -151,11 +184,37 @@ contract("Exchange", (accounts) => {
       var deposited = (await exchange.pblBalanceOf.call(pblHolder)).toNumber();
       assert.equal(deposited, 0);
     });
+
+    it('should allow to partially withdraw PBL', async () => {
+      await exchange.withdrawPbl(1, {from: pblHolder});
+
+      var transferred = (await pebblesToken.balanceOf.call(exchange.address)).toNumber();
+      assert.equal(transferred, 1);
+
+      var deposited = (await exchange.pblBalanceOf.call(pblHolder)).toNumber();
+      assert.equal(deposited, 1);
+    });
+
+    it('should allow partial withdrawal if funds are locked', async () => {
+      await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder})
+      await exchange.withdrawPbl(1, {from: pblHolder});
+
+      var transferred = (await pebblesToken.balanceOf.call(exchange.address)).toNumber();
+      assert.equal(transferred, 1);
+
+      var deposited = (await exchange.pblBalanceOf.call(pblHolder)).toNumber();
+      assert.equal(deposited, 1);
+    });
+
+    it('should disallow withdrawal of locked PBL', async () => {
+      await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder})
+      await expectThrow(exchange.withdrawPbl(2, {from: pblHolder}));
+    });
   });
 
   describe('placeBuyOrder()', () => {
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
       await exchange.depositPbl(1, {from: pblHolder});
     });
@@ -202,7 +261,7 @@ contract("Exchange", (accounts) => {
 
   describe('placeSellOrder()', () => {
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await bookToken.approve(exchange.address, 1, {from: bookHolder});
       await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
     });
@@ -250,7 +309,7 @@ contract("Exchange", (accounts) => {
 
   describe('getBuyOrder()', () => {
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
       await exchange.depositPbl(1, {from: pblHolder});
     });
@@ -271,7 +330,7 @@ contract("Exchange", (accounts) => {
 
   describe('getSellOrder()', () => {
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await bookToken.approve(exchange.address, 1, {from: bookHolder});
       await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
     });
@@ -292,7 +351,7 @@ contract("Exchange", (accounts) => {
 
   describe('getBuyOrders()', () => {
     beforeEach(async function() {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
       await exchange.depositPbl(1, {from: pblHolder});
     });
@@ -318,7 +377,7 @@ contract("Exchange", (accounts) => {
 
   describe('getSellOrders()', () => {
     beforeEach(async function() {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await bookToken.approve(exchange.address, 1, {from: bookHolder});
       await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
     });
@@ -346,7 +405,7 @@ contract("Exchange", (accounts) => {
     let orderId;
 
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
       await exchange.depositPbl(1, {from: pblHolder});
 
@@ -392,7 +451,7 @@ contract("Exchange", (accounts) => {
     let orderId;
 
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
       await bookToken.approve(exchange.address, 1, {from: bookHolder});
       await exchange.depositToken(bookToken.address, 1, {from: bookHolder});
 
@@ -438,15 +497,15 @@ contract("Exchange", (accounts) => {
     let orderId;
 
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
 
-      await pebblesToken.approve(exchange.address, 2, {from: pblHolder});
-      await exchange.depositPbl(2, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 2 * ONE_PBL, {from: pblHolder});
+      await exchange.depositPbl(2 * ONE_PBL, {from: pblHolder});
 
       await bookToken.approve(exchange.address, 2, {from: bookHolder});
       await exchange.depositToken(bookToken.address, 2, {from: bookHolder});
 
-      await exchange.placeBuyOrder(bookToken.address, 2, 1, {from: pblHolder});
+      await exchange.placeBuyOrder(bookToken.address, 2, ONE_PBL, {from: pblHolder});
       orderId = (await exchange.getBuyOrders(bookToken.address))[0];
     });
 
@@ -477,7 +536,7 @@ contract("Exchange", (accounts) => {
       let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
 
       assert.equal(await exchange.haveBuyOrder(bookToken.address, orderId), false);
-      assert.equal(bookHolderPbls.toNumber(), 2);
+      assert.equal(bookHolderPbls.toNumber(), 2 * ONE_PBL);
       assert.equal(pblHolderTokens.toNumber(), 2);
     });
 
@@ -488,7 +547,7 @@ contract("Exchange", (accounts) => {
       let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
 
       assert.equal(order[1].toNumber(), 1);
-      assert.equal(bookHolderPbls.toNumber(), 1);
+      assert.equal(bookHolderPbls.toNumber(), 1 * ONE_PBL);
       assert.equal(pblHolderTokens.toNumber(), 1);
     });
 
@@ -497,8 +556,44 @@ contract("Exchange", (accounts) => {
       await exchange.fulfillBuyOrder(bookToken.address, orderId, 2, {from: bookHolder});
       let after = await exchange.pblLockedOf(pblHolder);
 
-      assert.equal(before.toNumber(), 2);
+      assert.equal(before.toNumber(), 2 * ONE_PBL);
       assert.equal(after.toNumber(), 0);
+    });
+
+    it('should respect system commission settings', async () => {
+      await exchange.setSystemCommission(10, systemCommissionReceiver, {from: owner})
+
+      await exchange.fulfillBuyOrder(bookToken.address, orderId, 1, {from: bookHolder});
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let systemCommissionReceiverPbls = await exchange.pblBalanceOf(systemCommissionReceiver);
+
+      assert.equal(bookHolderPbls.toNumber(), ONE_PBL * 0.99);
+      assert.equal(systemCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
+    });
+
+    it('should respect book commission settings', async () => {
+      await exchange.updateRegisteredToken(bookToken.address, "Book1", 10, bookCommissionReceiver, {from: owner})
+
+      await exchange.fulfillBuyOrder(bookToken.address, orderId, 1, {from: bookHolder});
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let bookCommissionReceiverPbls = await exchange.pblBalanceOf(bookCommissionReceiver);
+
+      assert.equal(bookHolderPbls.toNumber(), ONE_PBL * 0.99);
+      assert.equal(bookCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
+    });
+
+    it('should respect both book and system commission settings', async () => {
+      await exchange.setSystemCommission(10, systemCommissionReceiver, {from: owner})
+      await exchange.updateRegisteredToken(bookToken.address, "Book1", 10, bookCommissionReceiver, {from: owner})
+
+      await exchange.fulfillBuyOrder(bookToken.address, orderId, 1, {from: bookHolder});
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let bookCommissionReceiverPbls = await exchange.pblBalanceOf(bookCommissionReceiver);
+      let systemCommissionReceiverPbls = await exchange.pblBalanceOf(systemCommissionReceiver);
+
+      assert.equal(bookHolderPbls.toNumber(), ONE_PBL * 0.98);
+      assert.equal(systemCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
+      assert.equal(bookCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
     });
   });
 
@@ -506,15 +601,15 @@ contract("Exchange", (accounts) => {
     let orderId;
 
     beforeEach(async () => {
-      await exchange.registerToken(bookToken.address, "Book1");
+      await exchange.registerToken(bookToken.address, "Book1", 0, bookCommissionReceiver);
 
-      await pebblesToken.approve(exchange.address, 2, {from: pblHolder});
-      await exchange.depositPbl(2, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 2 * ONE_PBL, {from: pblHolder});
+      await exchange.depositPbl(2 * ONE_PBL, {from: pblHolder});
 
       await bookToken.approve(exchange.address, 2, {from: bookHolder});
       await exchange.depositToken(bookToken.address, 2, {from: bookHolder});
 
-      await exchange.placeSellOrder(bookToken.address, 2, 1, {from: bookHolder});
+      await exchange.placeSellOrder(bookToken.address, 2, ONE_PBL, {from: bookHolder});
       orderId = (await exchange.getSellOrders(bookToken.address))[0];
     });
 
@@ -545,7 +640,7 @@ contract("Exchange", (accounts) => {
       let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
 
       assert.equal(await exchange.haveSellOrder(bookToken.address, orderId), false);
-      assert.equal(bookHolderPbls.toNumber(), 2);
+      assert.equal(bookHolderPbls.toNumber(), 2 * ONE_PBL);
       assert.equal(pblHolderTokens.toNumber(), 2);
     });
 
@@ -556,7 +651,7 @@ contract("Exchange", (accounts) => {
       let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
 
       assert.equal(order[1].toNumber(), 1);
-      assert.equal(bookHolderPbls.toNumber(), 1);
+      assert.equal(bookHolderPbls.toNumber(), ONE_PBL);
       assert.equal(pblHolderTokens.toNumber(), 1);
     });
 
@@ -567,6 +662,42 @@ contract("Exchange", (accounts) => {
 
       assert.equal(before.toNumber(), 2);
       assert.equal(after.toNumber(), 0);
+    });
+
+    it('should respect system commission settings', async () => {
+      await exchange.setSystemCommission(10, systemCommissionReceiver, {from: owner})
+
+      await exchange.fulfillSellOrder(bookToken.address, orderId, 1, {from: pblHolder});
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let systemCommissionReceiverPbls = await exchange.pblBalanceOf(systemCommissionReceiver);
+
+      assert.equal(bookHolderPbls.toNumber(), ONE_PBL * 0.99);
+      assert.equal(systemCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
+    });
+
+    it('should respect book commission settings', async () => {
+      await exchange.updateRegisteredToken(bookToken.address, "Book1", 10, bookCommissionReceiver, {from: owner})
+
+      await exchange.fulfillSellOrder(bookToken.address, orderId, 1, {from: pblHolder});
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let bookCommissionReceiverPbls = await exchange.pblBalanceOf(bookCommissionReceiver);
+
+      assert.equal(bookHolderPbls.toNumber(), ONE_PBL * 0.99);
+      assert.equal(bookCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
+    });
+
+    it('should respect both book and system commission settings', async () => {
+      await exchange.setSystemCommission(10, systemCommissionReceiver, {from: owner})
+      await exchange.updateRegisteredToken(bookToken.address, "Book1", 10, bookCommissionReceiver, {from: owner})
+
+      await exchange.fulfillSellOrder(bookToken.address, orderId, 1, {from: pblHolder});
+      let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
+      let bookCommissionReceiverPbls = await exchange.pblBalanceOf(bookCommissionReceiver);
+      let systemCommissionReceiverPbls = await exchange.pblBalanceOf(systemCommissionReceiver);
+
+      assert.equal(bookHolderPbls.toNumber(), ONE_PBL * 0.98);
+      assert.equal(systemCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
+      assert.equal(bookCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
     });
   });
 });

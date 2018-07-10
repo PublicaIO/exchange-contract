@@ -1,12 +1,10 @@
 pragma solidity ^0.4.22;
 
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
-import "openzeppelin-solidity/contracts/ownership/Contactable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "openzeppelin-solidity/contracts/ownership/HasNoEther.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 
-contract Exchange is Ownable, Contactable, HasNoEther {
+contract Exchange is Ownable {
     uint8 constant BUY = 0;
     uint8 constant SELL = 1;
 
@@ -25,9 +23,17 @@ contract Exchange is Ownable, Contactable, HasNoEther {
 
         // list of order ids
         bytes8[][2] ordersIndex;
+
+        // trade commission
+        // 1 = 0.1%, 10 = 1%, 1000 = 100%
+        uint16 commissionPermille;
+        address commissionReceiver;
     }
 
     ERC20 public pebbles;
+
+    uint16 systemCommissionPermille;
+    address systemCommissionReceiver;
 
     // token address => Token struct mapping
     mapping (address => Token) public tokens;
@@ -62,22 +68,31 @@ contract Exchange is Ownable, Contactable, HasNoEther {
     event BuyOrderCancelled(bytes8 indexed _id, address indexed _tokenAddress);
     event SellOrderCancelled(bytes8 indexed _id, address indexed _tokenAddress);
 
-    event DEBUGS(string indexed message);
-
-    constructor(ERC20 _pebbles)
-      public
-      Ownable()
-      Contactable()
-      HasNoEther()
-    {
+    constructor(ERC20 _pebbles) public Ownable() {
         pebbles = _pebbles;
+        systemCommissionPermille = 0;
+        systemCommissionReceiver = msg.sender;
     }
 
-    function registerToken(address _tokenAddress, string _symbol) public onlyOwner {
+    function setSystemCommission(uint16 _systemCommissionPermille, address _systemCommissionReceiver) public onlyOwner {
+        // require(_systemCommissionPermille <= 1000, "Permille > 1000 makes no sense");
+        // require(_systemCommissionReceiver != address(0));
+
+        systemCommissionPermille = _systemCommissionPermille;
+        systemCommissionReceiver = _systemCommissionReceiver;
+    }
+
+    function registerToken(address _tokenAddress, string _symbol, uint16 _commissionPermille, address _commissionReceiver) public onlyOwner {
         require(bytes(_symbol).length > 0, "Book token title must be specified");
         require(bytes(tokens[_tokenAddress].symbol).length == 0, "Book token already registered");
+        // require(_commissionPermille <= 1000, "Permille > 1000 makes no sense");
+        // require((_commissionPermille + systemCommissionPermille) <= 1000, "Permille > 1000 makes no sense");
+        // require(_commissionReceiver != address(0));
 
         tokens[_tokenAddress].symbol = _symbol;
+        tokens[_tokenAddress].commissionPermille = _commissionPermille;
+        tokens[_tokenAddress].commissionReceiver = _commissionReceiver;
+
         tokensIndex.push(_tokenAddress);
 
         emit TokenAddedToSystem(_symbol);
@@ -87,12 +102,22 @@ contract Exchange is Ownable, Contactable, HasNoEther {
         return tokensIndex.length;
     }
 
-    function haveRegisteredToken(address _tokenAddress) public view returns (bool) {
-        return bytes(tokens[_tokenAddress].symbol).length > 0;
+    function requireRegisteredToken(address _tokenAddress) private view {
+        require(bytes(tokens[_tokenAddress].symbol).length > 0, "Token not registered");
     }
 
-    function requireRegisteredToken(address _tokenAddress) private view {
-        require(haveRegisteredToken(_tokenAddress), "Token not registered");
+    function getRegisteredToken(address _tokenAddress) public view returns (string, uint16, address) {
+        return (
+            tokens[_tokenAddress].symbol,
+            tokens[_tokenAddress].commissionPermille,
+            tokens[_tokenAddress].commissionReceiver
+        );
+    }
+
+    function updateRegisteredToken(address _tokenAddress, string _symbol, uint16 _commissionPermille, address _commissionReceiver) public onlyOwner {
+        tokens[_tokenAddress].symbol = _symbol;
+        tokens[_tokenAddress].commissionPermille = _commissionPermille;
+        tokens[_tokenAddress].commissionReceiver = _commissionReceiver;
     }
 
     function depositToken(address _tokenAddress, uint _amountTokens) public {
@@ -112,7 +137,7 @@ contract Exchange is Ownable, Contactable, HasNoEther {
     function withdrawToken(address _tokenAddress, uint _amountTokens) public {
         requireRegisteredToken(_tokenAddress);
         require(_amountTokens > 0, "Incorrect amount");
-        require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens, "Requested amount is above available balance");
+        require(SafeMath.sub(tokenBalance[msg.sender][_tokenAddress], tokenLockedOf(_tokenAddress, msg.sender)) >= _amountTokens, "Insufficient balance");
 
         tokenBalance[msg.sender][_tokenAddress] = SafeMath.sub(tokenBalance[msg.sender][_tokenAddress], _amountTokens);
 
@@ -135,7 +160,7 @@ contract Exchange is Ownable, Contactable, HasNoEther {
 
     function withdrawPbl(uint _amountPbl) public {
         require(_amountPbl > 0, "Incorrect amount");
-        require(pblBalance[msg.sender] >= _amountPbl, "Requested amount is above available balance");
+        require(SafeMath.sub(pblBalance[msg.sender], pblLockedOf(msg.sender)) >= _amountPbl, "Insufficient balance");
 
         pblBalance[msg.sender] = SafeMath.sub(pblBalance[msg.sender], _amountPbl);
 
@@ -330,7 +355,7 @@ contract Exchange is Ownable, Contactable, HasNoEther {
         requireRegisteredToken(_tokenAddress);
         requireHaveOrder(BUY, _tokenAddress, _id);
         require(_amountTokens > 0, "Incorrect amount");
-        require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens, "Requested amount is above available balance");
+        require(tokenBalance[msg.sender][_tokenAddress] >= _amountTokens, "Insufficient balance");
 
         Token storage token = tokens[_tokenAddress];
 
@@ -344,8 +369,18 @@ contract Exchange is Ownable, Contactable, HasNoEther {
         uint totalPbl = SafeMath.mul(maxTokens, order.pricePbl);
 
         tokenBalance[order.owner][_tokenAddress] = SafeMath.add(tokenBalance[order.owner][_tokenAddress], maxTokens);
-        pblBalance[msg.sender] = SafeMath.add(pblBalance[msg.sender], totalPbl);
         pblLocked[order.owner] = SafeMath.sub(pblLocked[order.owner], totalPbl);
+
+        uint systemCommission = totalPbl * systemCommissionPermille / 1000;
+        uint tokenCommission = totalPbl * token.commissionPermille / 1000;
+
+        pblBalance[systemCommissionReceiver] = SafeMath.add(pblBalance[systemCommissionReceiver], systemCommission);
+        totalPbl = SafeMath.sub(totalPbl, systemCommission);
+
+        pblBalance[token.commissionReceiver] = SafeMath.add(pblBalance[token.commissionReceiver], tokenCommission);
+        totalPbl = SafeMath.sub(totalPbl, tokenCommission);
+
+        pblBalance[msg.sender] = SafeMath.add(pblBalance[msg.sender], totalPbl);
 
         if (maxTokens == order.amountTokens) {
             uint rowToDelete = orders[_id].index;
@@ -376,12 +411,22 @@ contract Exchange is Ownable, Contactable, HasNoEther {
         uint maxTokens = _amountTokens < order.amountTokens ? _amountTokens : order.amountTokens;
         uint totalPbl = SafeMath.mul(maxTokens, order.pricePbl);
 
-        require(pblBalance[msg.sender] >= totalPbl, "Requested amount is above available balance");
+        require(pblBalance[msg.sender] >= totalPbl, "Insufficient balance");
         require(_amountTokens <= order.amountTokens, "Requested amount is above supply");
 
         tokenBalance[msg.sender][_tokenAddress] = SafeMath.add(tokenBalance[msg.sender][_tokenAddress], maxTokens);
-        pblBalance[order.owner] = SafeMath.add(pblBalance[order.owner], totalPbl);
         tokenLocked[order.owner][_tokenAddress] = SafeMath.sub(tokenLocked[order.owner][_tokenAddress], _amountTokens);
+
+        uint systemCommission = totalPbl * systemCommissionPermille / 1000;
+        uint tokenCommission = totalPbl * token.commissionPermille / 1000;
+
+        pblBalance[systemCommissionReceiver] = SafeMath.add(pblBalance[systemCommissionReceiver], systemCommission);
+        totalPbl = SafeMath.sub(totalPbl, systemCommission);
+
+        pblBalance[token.commissionReceiver] = SafeMath.add(pblBalance[token.commissionReceiver], tokenCommission);
+        totalPbl = SafeMath.sub(totalPbl, tokenCommission);
+
+        pblBalance[order.owner] = SafeMath.add(pblBalance[order.owner], totalPbl);
 
         if (maxTokens == order.amountTokens) {
             uint rowToDelete = orders[_id].index;
