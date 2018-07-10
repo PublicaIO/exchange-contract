@@ -5,8 +5,10 @@
  * `npm install`
 
 ### Test
- * `truffle test`
- * `./node_modules/.bin/solidity-coverage`
+
+ * If you're running gangache: `truffle test`
+ * Suitable for CI (starts/stops gangache on the background): `truffle test --network=test`
+ * Coverage: `./node_modules/.bin/solidity-coverage`
 
 ### Demo
  * Install Metamask, choose "Localhost 8545" (or configure by choosing "Custom RPC", set Ganache's default: http://127.0.0.1:8545)

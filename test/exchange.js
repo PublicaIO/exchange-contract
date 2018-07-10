@@ -2,9 +2,9 @@
 var truffleAssert = require('truffle-assertions');
 var expectThrow = require('./helper.js');
 
-var Exchange = artifacts.require("Exchange");
-var PBLToken = artifacts.require("StandardTokenMock");
-var BookToken = artifacts.require("StandardTokenMock");
+var ExchangeContract = artifacts.require("Exchange");
+var PebblesTokenContract = artifacts.require("PebblesTokenMock");
+var BookTokenContract = artifacts.require("BookTokenMock");
 
 contract("Exchange", (accounts) => {
   let owner = accounts[0];
@@ -12,13 +12,16 @@ contract("Exchange", (accounts) => {
   let pblHolder = accounts[2];
   let bookHolder = accounts[3];
   let exchange;
-  let pblToken;
+  let pebblesToken;
   let bookToken;
 
   beforeEach(async () => {
-    pblToken = await PBLToken.new(pblHolder, 100);
-    bookToken = await BookToken.new(bookHolder, 100);
-    exchange = await Exchange.new(pblToken.address);
+    pebblesToken = await PebblesTokenContract.new();
+    bookToken = await BookTokenContract.new();
+    exchange = await ExchangeContract.new(pebblesToken.address);
+
+    await pebblesToken.gimme(100, {from: pblHolder})
+    await bookToken.gimme(100, {from: bookHolder})
   });
 
   describe('registerToken()', () => {
@@ -103,7 +106,7 @@ contract("Exchange", (accounts) => {
 
   describe('depositPbl()', () => {
     beforeEach(async () => {
-      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
     });
 
     it('should raise exception on invalid amount of PBL', async () => {
@@ -117,7 +120,7 @@ contract("Exchange", (accounts) => {
     it('should allow to deposit PBL', async () => {
       await exchange.depositPbl(1, {from: pblHolder});
 
-      var transferred = (await pblToken.balanceOf.call(exchange.address)).toNumber();
+      var transferred = (await pebblesToken.balanceOf.call(exchange.address)).toNumber();
       assert.equal(transferred, 1);
 
       var deposited = (await exchange.pblBalanceOf.call(pblHolder)).toNumber();
@@ -127,7 +130,7 @@ contract("Exchange", (accounts) => {
 
   describe('withdrawPbl()', () => {
     beforeEach(async () => {
-      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
       await exchange.depositPbl(1, {from: pblHolder});
     });
 
@@ -142,7 +145,7 @@ contract("Exchange", (accounts) => {
     it('should allow to withdraw PBL', async () => {
       await exchange.withdrawPbl(1, {from: pblHolder});
 
-      var transferred = (await pblToken.balanceOf.call(exchange.address)).toNumber();
+      var transferred = (await pebblesToken.balanceOf.call(exchange.address)).toNumber();
       assert.equal(transferred, 0);
 
       var deposited = (await exchange.pblBalanceOf.call(pblHolder)).toNumber();
@@ -153,7 +156,7 @@ contract("Exchange", (accounts) => {
   describe('placeBuyOrder()', () => {
     beforeEach(async () => {
       await exchange.registerToken(bookToken.address, "Book1");
-      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
       await exchange.depositPbl(1, {from: pblHolder});
     });
 
@@ -248,7 +251,7 @@ contract("Exchange", (accounts) => {
   describe('getBuyOrder()', () => {
     beforeEach(async () => {
       await exchange.registerToken(bookToken.address, "Book1");
-      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
       await exchange.depositPbl(1, {from: pblHolder});
     });
 
@@ -260,8 +263,9 @@ contract("Exchange", (accounts) => {
 
       order = await exchange.getBuyOrder(bookToken.address, id);
 
-      assert.equal(order[0].toNumber(), 1);
+      assert.equal(order[0], pblHolder);
       assert.equal(order[1].toNumber(), 1);
+      assert.equal(order[2].toNumber(), 1);
     });
   });
 
@@ -280,15 +284,16 @@ contract("Exchange", (accounts) => {
 
       order = await exchange.getSellOrder(bookToken.address, id);
 
-      assert.equal(order[0].toNumber(), 1);
+      assert.equal(order[0], bookHolder);
       assert.equal(order[1].toNumber(), 1);
+      assert.equal(order[2].toNumber(), 1);
     });
   });
 
   describe('getBuyOrders()', () => {
     beforeEach(async function() {
       await exchange.registerToken(bookToken.address, "Book1");
-      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
       await exchange.depositPbl(1, {from: pblHolder});
     });
 
@@ -342,7 +347,7 @@ contract("Exchange", (accounts) => {
 
     beforeEach(async () => {
       await exchange.registerToken(bookToken.address, "Book1");
-      await pblToken.approve(exchange.address, 1, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 1, {from: pblHolder});
       await exchange.depositPbl(1, {from: pblHolder});
 
       await exchange.placeBuyOrder(bookToken.address, 1, 1, {from: pblHolder});
@@ -435,7 +440,7 @@ contract("Exchange", (accounts) => {
     beforeEach(async () => {
       await exchange.registerToken(bookToken.address, "Book1");
 
-      await pblToken.approve(exchange.address, 2, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 2, {from: pblHolder});
       await exchange.depositPbl(2, {from: pblHolder});
 
       await bookToken.approve(exchange.address, 2, {from: bookHolder});
@@ -482,7 +487,7 @@ contract("Exchange", (accounts) => {
       let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
       let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
 
-      assert.equal(order[0].toNumber(), 1);
+      assert.equal(order[1].toNumber(), 1);
       assert.equal(bookHolderPbls.toNumber(), 1);
       assert.equal(pblHolderTokens.toNumber(), 1);
     });
@@ -503,7 +508,7 @@ contract("Exchange", (accounts) => {
     beforeEach(async () => {
       await exchange.registerToken(bookToken.address, "Book1");
 
-      await pblToken.approve(exchange.address, 2, {from: pblHolder});
+      await pebblesToken.approve(exchange.address, 2, {from: pblHolder});
       await exchange.depositPbl(2, {from: pblHolder});
 
       await bookToken.approve(exchange.address, 2, {from: bookHolder});
@@ -550,7 +555,7 @@ contract("Exchange", (accounts) => {
       let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
       let pblHolderTokens = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
 
-      assert.equal(order[0].toNumber(), 1);
+      assert.equal(order[1].toNumber(), 1);
       assert.equal(bookHolderPbls.toNumber(), 1);
       assert.equal(pblHolderTokens.toNumber(), 1);
     });

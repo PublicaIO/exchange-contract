@@ -1,11 +1,12 @@
 pragma solidity ^0.4.22;
 
 import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
+import "openzeppelin-solidity/contracts/ownership/Contactable.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/ownership/HasNoEther.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 
-contract Exchange is Ownable, HasNoEther {
+contract Exchange is Ownable, Contactable, HasNoEther {
     uint8 constant BUY = 0;
     uint8 constant SELL = 1;
 
@@ -63,7 +64,12 @@ contract Exchange is Ownable, HasNoEther {
 
     event DEBUGS(string indexed message);
 
-    constructor(ERC20 _pebbles) public {
+    constructor(ERC20 _pebbles)
+      public
+      Ownable()
+      Contactable()
+      HasNoEther()
+    {
         pebbles = _pebbles;
     }
 
