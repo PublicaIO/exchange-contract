@@ -20,7 +20,7 @@ export default class Token extends ContractBase {
     return allowance.toNumber().toString()
   }
 
-  async gimme (me, requested) {
+  async gimmeAndApprove (me, requested) {
     const balance = parseInt(await this.balanceOf(me))
 
     await this.contractInstance.gimme(requested, {from: me, gas: this.gas})

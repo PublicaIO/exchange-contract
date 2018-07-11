@@ -5,16 +5,16 @@
         Book contract: {{ address }} <br/>
         Your balance: {{ bookTokens }} <br/>
         Exchange allowance: {{ bookAllowance }} <br/>
-        <GimmeBookForm v-bind:address="address" @funded="refreshExchange = refreshExchange + 1"/>
+        <GimmeBookForm v-bind:address="address" @funded="refreshExchange++"/>
         <h2>Exchange:</h2>
         Balance PBL: {{ exchangeBalancePbls }} |
         Locked PBL: {{ exchangeLockedPbls }} |
         Balance token: {{ exchangeBookTokens }} |
         Locked token: {{ exchangeLockedBookTokens }} <br/>
         <h3>Buy orders</h3>
-        <OrderList v-bind:address="address" :direction="'Buy'" @created="refreshBuyOrders = refreshBuyOrders + 1" @deleted="refreshBuyOrders = refreshBuyOrders + 1"/>
+        <OrderList v-bind:address="address" :direction="'Buy'" @created="refreshExchange++" @deleted="refreshExchange++"/>
         <h3>Sell orders</h3>
-        <OrderList v-bind:address="address" :direction="'Sell'" @created="refreshSellOrders = refreshSellOrders + 1" @deleted="refreshSellOrders = refreshSellOrders + 1"/>
+        <OrderList v-bind:address="address" :direction="'Sell'" @created="refreshExchange++" @deleted="refreshExchange++"/>
       </div>
     </div>
   </div>
@@ -32,13 +32,11 @@
         exchangeBookTokens: 0,
         exchangeLockedBookTokens: 0,
 
-        refreshExchange: 0,
-        refreshBuyOrders: 0,
-        refreshSellOrders: 0
+        refreshExchange: 0
       }
     },
     asyncComputed: {
-      pblBalanceOf: {
+      exchangeBalancePbls: {
         get () {
           return this.$store.getters.exchange.callNumericMethod('pblBalanceOf', this.$store.state.user.coinbase)
         },
@@ -46,7 +44,7 @@
           return this.refreshExchange
         }
       },
-      pblLockedOf: {
+      exchangeLockedPbls: {
         get () {
           return this.$store.getters.exchange.callNumericMethod('pblLockedOf', this.$store.state.user.coinbase)
         },
@@ -54,7 +52,7 @@
           return this.refreshExchange
         }
       },
-      tokenBalanceOf: {
+      exchangeBookTokens: {
         get () {
           return this.$store.getters.exchange.callNumericMethod('tokenBalanceOf', this.address, this.$store.state.user.coinbase)
         },
@@ -62,7 +60,7 @@
           return this.refreshExchange
         }
       },
-      tokenLockedOf: {
+      exchangeLockedBookTokens: {
         get () {
           return this.$store.getters.exchange.callNumericMethod('tokenLockedOf', this.address, this.$store.state.user.coinbase)
         },

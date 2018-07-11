@@ -28,8 +28,14 @@
         let coinbase = this.$store.state.user.coinbase
 
         const requested = parseInt(this.value)
-        this.$store.getters.pebbles.gimme(coinbase, requested)
-          .then(balance => this.$emit('funded', balance, balance))
+        this.$store.getters.pebbles.gimmeAndApprove(coinbase, requested)
+          .then(balance => {
+            this.$emit('funded')
+
+            this.$store.getters.exchange.depositPbl(balance).then(() => {
+              this.$emit('funded')
+            })
+          })
       }
     },
     name: 'pbl-form'

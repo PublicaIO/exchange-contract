@@ -3,7 +3,7 @@ import Pebbles from '../util/pebbles'
 
 export default {
   exchange (state) {
-    return new Exchange(state.web3.instance(), state.user.exchangeContractAddress)
+    return new Exchange(state.web3.instance(), state.user.exchangeContractAddress, state.user.coinbase)
   },
   pebbles (state, getters) {
     return new Pebbles(state.web3.instance(), state.user.pblContractAddress, getters.exchange.address)

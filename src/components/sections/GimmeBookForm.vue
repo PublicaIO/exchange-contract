@@ -33,8 +33,14 @@
         let book = new Book(web3, this.address, this.$store.getters.exchange.address)
         const requested = parseInt(this.value)
 
-        book.gimme(coinbase, requested)
-          .then(balance => this.$emit('funded', balance, balance))
+        book.gimmeAndApprove(coinbase, requested)
+          .then(balance => {
+            this.$emit('funded')
+
+            this.$store.getters.exchange.depositToken(this.address, balance).then(() => {
+              this.$emit('funded')
+            })
+          })
       }
     },
     name: 'book-form'

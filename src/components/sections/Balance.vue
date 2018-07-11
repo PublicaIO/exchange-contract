@@ -8,7 +8,7 @@
           <div>Exchange configured pebbles address: {{ exchangePblAddress }}</div>
           <div>Pebbles address: {{ pblContractAddress }}</div>
         </div>
-        <GimmePBLForm @funded="onFunded"/>
+        <GimmePBLForm @funded="refreshBalance++"/>
     </div>
   </div>
 </template>
@@ -20,7 +20,8 @@
         user: this.$store.state.user,
         eth: 0,
         pbl: 0,
-        allowance: 0
+        allowance: 0,
+        refreshBalance: 0
       }
     },
     components: {
@@ -35,28 +36,40 @@
       }
     },
     asyncComputed: {
-      exchangePblAddress () {
-        return this.$store.getters.exchange.callMethod('pebbles')
+      exchangePblAddress: {
+        get () {
+          return this.$store.getters.exchange.callMethod('pebbles')
+        },
+        watch () {
+          return this.refreshBalance
+        }
       },
-      eth () {
-        return this.$store.getters.eth
+      eth: {
+        get () {
+          return this.$store.getters.eth
+        },
+        watch () {
+          return this.refreshBalance
+        }
       },
-      pbl () {
-        const coinbase = this.$store.state.user.coinbase
+      pbl: {
+        get () {
+          return this.$store.getters.pebbles.balanceOf(this.$store.state.user.coinbase)
+        },
+        watch () {
+          return this.refreshBalance
+        }
+      },
+      allowance: {
+        get () {
+          const coinbase = this.$store.state.user.coinbase
+          const exchange = this.$store.getters.exchange
 
-        return this.$store.getters.pebbles.balanceOf(coinbase)
-      },
-      allowance () {
-        const coinbase = this.$store.state.user.coinbase
-        const exchange = this.$store.getters.exchange
-
-        return this.$store.getters.pebbles.allowance(coinbase, exchange.address)
-      }
-    },
-    methods: {
-      onFunded (balance, allowance) {
-        this.pbl = balance
-        this.allowance = allowance
+          return this.$store.getters.pebbles.allowance(coinbase, exchange.address)
+        },
+        watch () {
+          return this.refreshBalance
+        }
       }
     },
     name: 'balance'

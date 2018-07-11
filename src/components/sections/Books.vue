@@ -12,7 +12,7 @@
           </tr>
           <tr v-for="book in books">
             <td class="address">{{ book.address }}</td>
-            <td class="title">{{ book.title }}</td>
+            <td class="title">{{ book.data[0] }}</td>
             <td>
               <router-link :to="{ name: 'Orders', params: { address: book.address }}">Orders</router-link>
             </td>

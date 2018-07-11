@@ -3,13 +3,14 @@ import ExchangeContractObject from '../../build/contracts/Exchange.json'
 import ContractBase from './contractbase'
 
 export default class Exchange extends ContractBase {
-  constructor (web3, address) {
+  constructor (web3, address, me) {
     const exchangeContract = contract(ExchangeContractObject)
     super(web3, address, exchangeContract)
+    this.me = me
   }
 
-  async registerToken (tokenAddress, title, ownerAddress) {
-    return await this.contractInstance.registerToken(tokenAddress, title, {from: ownerAddress, gas: this.gas})
+  async registerToken (tokenAddress, title, commissionPermille, commissionReceiver) {
+    return await this.contractInstance.registerToken(tokenAddress, title, commissionPermille, commissionReceiver, {from: this.me, gas: this.gas})
   }
 
   async getRegisteredBooks () {
@@ -17,10 +18,10 @@ export default class Exchange extends ContractBase {
     const booksCount = countTokens.toNumber()
 
     let addresses = await Promise.all([...Array(booksCount).keys()].map(i => this.contractInstance.tokensIndex.call(i)))
-    let titles = await Promise.all(addresses.map(a => this.contractInstance.tokens.call(a)))
+    let data = await Promise.all(addresses.map(a => this.contractInstance.getRegisteredToken.call(a)))
 
     return addresses.map((a, i) => {
-      return {address: a, title: titles[i]}
+      return {address: a, data: data[i]}
     })
   }
 
@@ -44,7 +45,7 @@ export default class Exchange extends ContractBase {
       return {id: id, data: await this.contractInstance[getOrderMethod].call(tokenAddress, id)}
     }))
 
-    return orders.map(order => {
+    return await orders.map(order => {
       return {
         id: order.id,
         owner: order.data[0],
@@ -54,27 +55,34 @@ export default class Exchange extends ContractBase {
     })
   }
 
-  async cancelOrder (direction, tokenAddress, id, ownerAddress) {
-    let cancelOrderMethod = 'cancel' + direction + 'Order'
-
-    return this.contractInstance[cancelOrderMethod](tokenAddress, id, {from: ownerAddress, gas: this.gas})
-  }
-
-  async realPlaceOrder (direction, tokenAddress, amount, price, ownerAddress) {
+  async placeOrder (direction, tokenAddress, amount, price) {
     let method = 'place' + direction + 'Order'
 
-    return this.contractInstance[method](tokenAddress, amount, price, {from: ownerAddress, gas: this.gas})
+    return this.contractInstance[method](tokenAddress, amount, price, {from: this.me, gas: this.gas})
   }
 
-  async placeOrder (direction, tokenAddress, amount, price, ownerAddress) {
-    if (direction === 'Buy') {
-      this.contractInstance.depositPbl(amount * price, {from: ownerAddress, gas: this.gas}).then(() => {
-        this.realPlaceOrder(direction, tokenAddress, amount, price, ownerAddress)
+  async acceptOrder (direction, tokenAddress, id) {
+    let getOrderMethod = 'get' + direction + 'Order'
+    let acceptOrderMethod = 'fulfill' + direction + 'Order'
+
+    return this.contractInstance[getOrderMethod](tokenAddress, id, {from: this.me, gas: this.gas})
+      .then((data) => {
+        const amount = data[1]
+        return this.contractInstance[acceptOrderMethod](tokenAddress, id, amount, {from: this.me, gas: this.gas})
       })
-    } else {
-      this.contractInstance.depositToken(tokenAddress, amount, {from: ownerAddress, gas: this.gas}).then(() => {
-        this.realPlaceOrder(direction, tokenAddress, amount, price, ownerAddress)
-      })
-    }
+  }
+
+  async cancelOrder (direction, tokenAddress, id) {
+    let cancelOrderMethod = 'cancel' + direction + 'Order'
+
+    return this.contractInstance[cancelOrderMethod](tokenAddress, id, {from: this.me, gas: this.gas})
+  }
+
+  async depositPbl (amount) {
+    return this.contractInstance.depositPbl(amount, {from: this.me, gas: this.gas})
+  }
+
+  async depositToken (tokenAddress, amount) {
+    return this.contractInstance.depositToken(tokenAddress, amount, {from: this.me, gas: this.gas})
   }
 }

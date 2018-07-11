@@ -17,7 +17,7 @@
         <td class="amount">{{ order.amount }}</td>
         <td>
             <button v-on:click="cancelOrder(order.id)" v-if="order.owner == currentUser">Cancel</button>
-            <button :click="acceptOrder" v-if="order.owner != currentUser">Accept</button>
+            <button v-on:click="acceptOrder(order.id)" v-if="order.owner != currentUser">Accept</button>
         </td>
       </tr>
     </table>
@@ -39,10 +39,14 @@
         this.$emit('created')
       },
       cancelOrder (id) {
-        const state = this.$store.state
-        const coinbase = state.user.coinbase
-
-        this.$store.getters.exchange.cancelOrder(this.direction, this.address, id, coinbase)
+        this.$store.getters.exchange.cancelOrder(this.direction, this.address, id)
+          .then(() => {
+            this.refreshOrders = this.refreshOrders + 1
+            this.$emit('deleted')
+          })
+      },
+      acceptOrder (id) {
+        this.$store.getters.exchange.acceptOrder(this.direction, this.address, id)
           .then(() => {
             this.refreshOrders = this.refreshOrders + 1
             this.$emit('deleted')

@@ -31,45 +31,14 @@
     },
     methods: {
       submit (evt) {
-        let state = this.$store.state
-        let web3 = state.web3.instance()
-        let exchangeContractAddress = state.user.exchangeContractAddress
-        let coinbase = state.user.coinbase
-
-        const exchangeContract = contract(Exchange)
-        exchangeContract.setProvider(web3.currentProvider)
-        const exchange = exchangeContract.at(exchangeContractAddress)
-        let that = this
-
-        let placeOrder = () => {
-          let method = 'place' + this.direction + 'Order'
-
-          exchange[method](this.address, this.amount, this.price, {from: coinbase, gas: 6654755}).then(() => {
-            console.log('Order created')
-            that.$emit('created')
+        this.$store.getters.exchange.placeOrder(this.direction, this.address, this.amount, this.price)
+          .then(() => {
+            this.$emit('created')
           })
-        }
-
-        if (this.direction === 'Buy') {
-          console.log('deposit', this.amount * this.price)
-          exchange.depositPbl(this.amount * this.price, {from: coinbase, gas: 6654755}).then(() => {
-            console.log('PBLs deposited')
-            placeOrder()
-          })
-        } else {
-          exchange.depositToken(this.address, this.amount, {from: coinbase, gas: 6654755}).then(() => {
-            console.log('Book tokens deposited')
-            placeOrder()
-          })
-        }
       }
     },
     name: 'order-form'
   }
-
-  import Exchange from '../../../build/contracts/Exchange.json'
-
-  const contract = require('truffle-contract')
 </script>
 
 <style scoped>

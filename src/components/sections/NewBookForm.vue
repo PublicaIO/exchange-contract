@@ -8,6 +8,14 @@
           <input type="text" id="title" name="title" v-model="title">
         </div>
         <div class="row">
+          <label for="commission">Author commission permille</label>
+          <input type="text" id="commission" name="commission" v-model="commission">
+        </div>
+        <div class="row">
+          <label for="address">Author address</label>
+          <input type="text" id="address" name="address" v-model="address">
+        </div>
+        <div class="row">
           <label class="warning-label">Please fill all fields.</label>
           <input type="button" value="Submit" @click="submit">
         </div>
@@ -20,7 +28,9 @@
   export default {
     data: function () {
       return {
-        title: ''
+        title: '',
+        commission: 0,
+        address: '0x0'
       }
     },
     methods: {
@@ -30,7 +40,7 @@
 
         let book = new Book(state.web3.instance(), 0, this.$store.getters.exchange.address)
         book.deploy(coinbase).then(instance => {
-          this.$store.getters.exchange.registerToken(instance.address, this.title, coinbase).then(() => {
+          this.$store.getters.exchange.registerToken(instance.address, this.title, this.commission, this.address).then(() => {
             console.log('Book registered')
             this.$emit('registered')
           })
@@ -64,14 +74,12 @@
   }
 
   .column {
-    width: 300px;
     display: inline-block;
   }
 
   .row {
     margin-top: 20px;
     font-size: 14px;
-    width: 300px;
     height: 40px;
     display: block;
   }
@@ -79,7 +87,7 @@
   label {
     height: 100%;
     line-height: 40px;
-    width: 100px;
+    width: 200px;
     display: inline-block;
   }
 
