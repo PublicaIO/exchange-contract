@@ -1,9 +1,5 @@
 var Ganache = require("ganache-core");
 
-var logger = {
-  log: function(a) {console.log(a);}
-};
-
 module.exports = {
   // See <http://truffleframework.com/docs/advanced/configuration>
   // for more about customizing your Truffle configuration!

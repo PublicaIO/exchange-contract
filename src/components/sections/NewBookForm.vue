@@ -40,6 +40,8 @@
 
         let book = new Book(state.web3.instance(), 0, this.$store.getters.exchange.address)
         book.deploy(coinbase).then(instance => {
+          console.log(coinbase)
+          console.log(instance.address, this.title, this.commission, this.address)
           this.$store.getters.exchange.registerToken(instance.address, this.title, this.commission, this.address).then(() => {
             console.log('Book registered')
             this.$emit('registered')

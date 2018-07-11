@@ -10,6 +10,7 @@ export default class Exchange extends ContractBase {
   }
 
   async registerToken (tokenAddress, title, commissionPermille, commissionReceiver) {
+    console.log(this.me)
     return await this.contractInstance.registerToken(tokenAddress, title, commissionPermille, commissionReceiver, {from: this.me, gas: this.gas})
   }
 

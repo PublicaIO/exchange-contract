@@ -78,6 +78,7 @@
     "truffle-artifactor": "^3.0.7",
     "truffle-assertions": "^0.2.0",
     "truffle-contract": "^3.0.6",
+    "truffle-hdwallet-provider": "0.0.5",
     "vue": "^2.5.3",
     "vue-async-computed": "^3.3.1",
     "vue-router": "^2.8.1",

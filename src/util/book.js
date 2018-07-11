@@ -7,7 +7,7 @@ export default class Book extends Token {
   }
 
   async deploy (me) {
-    let instance = await this.truffleContract.new(0, 0, {from: me, gas: this.gas})
+    let instance = await this.truffleContract.new({from: me, gas: this.gas})
     this.contractInstance = this.truffleContract.at(instance.address)
 
     return instance
