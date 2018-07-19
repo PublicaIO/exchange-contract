@@ -564,6 +564,7 @@ contract("Exchange", (accounts) => {
       await exchange.setSystemCommission(10, systemCommissionReceiver, {from: owner})
 
       await exchange.fulfillBuyOrder(bookToken.address, orderId, 1, {from: bookHolder});
+
       let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
       let systemCommissionReceiverPbls = await exchange.pblBalanceOf(systemCommissionReceiver);
 
@@ -575,6 +576,7 @@ contract("Exchange", (accounts) => {
       await exchange.updateRegisteredToken(bookToken.address, "Book1", 10, bookCommissionReceiver, {from: owner})
 
       await exchange.fulfillBuyOrder(bookToken.address, orderId, 1, {from: bookHolder});
+
       let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
       let bookCommissionReceiverPbls = await exchange.pblBalanceOf(bookCommissionReceiver);
 
@@ -587,6 +589,7 @@ contract("Exchange", (accounts) => {
       await exchange.updateRegisteredToken(bookToken.address, "Book1", 10, bookCommissionReceiver, {from: owner})
 
       await exchange.fulfillBuyOrder(bookToken.address, orderId, 1, {from: bookHolder});
+
       let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
       let bookCommissionReceiverPbls = await exchange.pblBalanceOf(bookCommissionReceiver);
       let systemCommissionReceiverPbls = await exchange.pblBalanceOf(systemCommissionReceiver);
@@ -594,6 +597,32 @@ contract("Exchange", (accounts) => {
       assert.equal(bookHolderPbls.toNumber(), ONE_PBL * 0.98);
       assert.equal(systemCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
       assert.equal(bookCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
+    });
+
+    it('should move tokens to buyer balance', async () => {
+      let bookHolderTokensBefore = await exchange.tokenBalanceOf(bookToken.address, bookHolder);
+      let pblHolderTokensBefore = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
+
+      await exchange.fulfillBuyOrder(bookToken.address, orderId, 2, {from: bookHolder});
+
+      let bookHolderTokensAfter = await exchange.tokenBalanceOf(bookToken.address, bookHolder);
+      let pblHolderTokensAfter = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
+
+      assert.equal(bookHolderTokensAfter.toNumber(), bookHolderTokensBefore.toNumber() - 2);
+      assert.equal(pblHolderTokensAfter.toNumber(), pblHolderTokensBefore.toNumber() + 2);
+    });
+
+    it('should move pbls to seller balance', async () => {
+      let bookHolderPblsBefore = await exchange.pblBalanceOf(bookHolder);
+      let pblHolderPblsBefore = await exchange.pblBalanceOf(pblHolder);
+
+      await exchange.fulfillBuyOrder(bookToken.address, orderId, 2, {from: bookHolder});
+
+      let bookHolderPblsAfter = await exchange.pblBalanceOf(bookHolder);
+      let pblHolderPblsAfter = await exchange.pblBalanceOf(pblHolder);
+
+      assert.equal(bookHolderPblsAfter.toNumber(), bookHolderPblsBefore.toNumber() + 2 * ONE_PBL);
+      assert.equal(pblHolderPblsAfter.toNumber(), pblHolderPblsBefore.toNumber() - 2 * ONE_PBL);
     });
   });
 
@@ -679,6 +708,7 @@ contract("Exchange", (accounts) => {
       await exchange.updateRegisteredToken(bookToken.address, "Book1", 10, bookCommissionReceiver, {from: owner})
 
       await exchange.fulfillSellOrder(bookToken.address, orderId, 1, {from: pblHolder});
+
       let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
       let bookCommissionReceiverPbls = await exchange.pblBalanceOf(bookCommissionReceiver);
 
@@ -691,6 +721,7 @@ contract("Exchange", (accounts) => {
       await exchange.updateRegisteredToken(bookToken.address, "Book1", 10, bookCommissionReceiver, {from: owner})
 
       await exchange.fulfillSellOrder(bookToken.address, orderId, 1, {from: pblHolder});
+
       let bookHolderPbls = await exchange.pblBalanceOf(bookHolder);
       let bookCommissionReceiverPbls = await exchange.pblBalanceOf(bookCommissionReceiver);
       let systemCommissionReceiverPbls = await exchange.pblBalanceOf(systemCommissionReceiver);
@@ -698,6 +729,32 @@ contract("Exchange", (accounts) => {
       assert.equal(bookHolderPbls.toNumber(), ONE_PBL * 0.98);
       assert.equal(systemCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
       assert.equal(bookCommissionReceiverPbls.toNumber(), ONE_PBL * 0.01);
+    });
+
+    it('should move tokens to buyer balance', async () => {
+      let bookHolderTokensBefore = await exchange.tokenBalanceOf(bookToken.address, bookHolder);
+      let pblHolderTokensBefore = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
+
+      await exchange.fulfillSellOrder(bookToken.address, orderId, 2, {from: pblHolder});
+
+      let bookHolderTokensAfter = await exchange.tokenBalanceOf(bookToken.address, bookHolder);
+      let pblHolderTokensAfter = await exchange.tokenBalanceOf(bookToken.address, pblHolder);
+
+      assert.equal(bookHolderTokensAfter.toNumber(), bookHolderTokensBefore.toNumber() - 2);
+      assert.equal(pblHolderTokensAfter.toNumber(), pblHolderTokensBefore.toNumber() + 2);
+    });
+
+    it('should move pbls to seller balance', async () => {
+      let bookHolderPblsBefore = await exchange.pblBalanceOf(bookHolder);
+      let pblHolderPblsBefore = await exchange.pblBalanceOf(pblHolder);
+
+      await exchange.fulfillSellOrder(bookToken.address, orderId, 2, {from: pblHolder});
+
+      let bookHolderPblsAfter = await exchange.pblBalanceOf(bookHolder);
+      let pblHolderPblsAfter = await exchange.pblBalanceOf(pblHolder);
+
+      assert.equal(bookHolderPblsAfter.toNumber(), bookHolderPblsBefore.toNumber() + 2 * ONE_PBL);
+      assert.equal(pblHolderPblsAfter.toNumber(), pblHolderPblsBefore.toNumber() - 2 * ONE_PBL);
     });
   });
 });

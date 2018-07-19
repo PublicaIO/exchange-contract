@@ -370,7 +370,9 @@ contract Exchange is Ownable {
 
         tokenBalance[order.owner][_tokenAddress] = SafeMath.add(tokenBalance[order.owner][_tokenAddress], maxTokens);
         tokenBalance[msg.sender][_tokenAddress] = SafeMath.sub(tokenBalance[msg.sender][_tokenAddress], maxTokens);
+
         pblLocked[order.owner] = SafeMath.sub(pblLocked[order.owner], totalPbl);
+        pblBalance[order.owner] = SafeMath.sub(pblBalance[order.owner], totalPbl);
 
         uint systemCommission = totalPbl * systemCommissionPermille / 1000;
         uint tokenCommission = totalPbl * token.commissionPermille / 1000;
@@ -418,6 +420,8 @@ contract Exchange is Ownable {
         tokenBalance[msg.sender][_tokenAddress] = SafeMath.add(tokenBalance[msg.sender][_tokenAddress], maxTokens);
         tokenBalance[order.owner][_tokenAddress] = SafeMath.sub(tokenBalance[order.owner][_tokenAddress], _amountTokens);
         tokenLocked[order.owner][_tokenAddress] = SafeMath.sub(tokenLocked[order.owner][_tokenAddress], _amountTokens);
+
+        pblBalance[msg.sender] = SafeMath.sub(pblBalance[msg.sender], totalPbl);
 
         uint systemCommission = totalPbl * systemCommissionPermille / 1000;
         uint tokenCommission = totalPbl * token.commissionPermille / 1000;
